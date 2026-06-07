@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>retro-note</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=VT323&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="main.js" defer></script>
+  </head>
+  <body>
+    <main class="app-container" id="app">
+      <div class="screen-wrap" id="computer-wrap">
+        <img
+          class="computer"
+          src="assets/computer.png"
+          alt="retro computer"
+          draggable="false"
+        />
+
+        <textarea
+          id="note"
+          spellcheck="false"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          placeholder="⌘+= / ⌘+- to resize · ⌘+0 to reset"
+        ></textarea>
+
+        <div class="saved-toast" id="saved-toast">[ SAVED ]</div>
+
+        <div class="top-controls">
+          <button class="btn mute-btn" id="mute-btn" title="Mute">[♪]</button>
+          <button class="btn close-btn" id="close-btn" title="Close">[X]</button>
+        </div>
+        <button class="btn save-btn" id="save-btn" title="Save">[ SAVE ]</button>
+        <button
+          class="btn resize-grip"
+          id="resize-grip"
+          title="Drag to resize"
+          aria-label="Resize"
+        >◢</button>
+      </div>
+    </main>
+  </body>
+</html>

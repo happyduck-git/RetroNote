@@ -1,0 +1,211 @@
+:root {
+  /* 컴퓨터 이미지의 원본 가로:세로 비율 = 2170:1952 ≈ 1.1116 */
+  /* 창 크기에 따라 자동 스케일: 가로/세로 중 작은 쪽 기준으로 비율 유지 */
+  --computer-width: min(100vw, calc(100vh * 2170 / 1952));
+
+  /* computer.png 내 모니터 화면 영역 (이미지 기준 백분율, Figma 측정값) */
+  --screen-top-pct: 19.31%;
+  --screen-left-pct: 25.35%;
+  --screen-width-pct: 47.88%;
+  --screen-height-pct: 39.65%;
+
+  --crt-green: #00ff41;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+}
+
+.app-container:active {
+  cursor: grabbing;
+}
+
+.screen-wrap {
+  position: relative;
+  width: var(--computer-width);
+  /* 컴퓨터 이미지의 원본 비율 2170:1952 (≈ 0.8995) 유지 */
+  aspect-ratio: 2170 / 1952;
+}
+
+.computer {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+#note {
+  position: absolute;
+  top: var(--screen-top-pct);
+  left: var(--screen-left-pct);
+  width: var(--screen-width-pct);
+  height: var(--screen-height-pct);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--crt-green);
+  caret-color: var(--crt-green);
+  font-family: "VT323", "Courier New", monospace;
+  font-size: calc(var(--computer-width) / 38);
+  line-height: 1.15;
+  padding: 0.4em 0.5em;
+  overflow: auto;
+  text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+  -webkit-app-region: no-drag;
+  user-select: text;
+  -webkit-user-select: text;
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+#note::placeholder {
+  color: var(--crt-green);
+  opacity: 0.35;
+}
+
+@keyframes caret-blink {
+  0%, 50% {
+    caret-color: var(--crt-green);
+  }
+  50.01%, 100% {
+    caret-color: transparent;
+  }
+}
+
+.btn {
+  position: absolute;
+  background: transparent;
+  border: none;
+  color: var(--crt-green);
+  font-family: "VT323", "Courier New", monospace;
+  font-size: calc(var(--computer-width) / 35);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  text-shadow: 0 0 6px rgba(0, 255, 65, 0.8);
+  padding: 0.2em 0.4em;
+}
+
+.btn:hover {
+  color: #fff;
+  text-shadow: 0 0 8px #fff;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+/* 검은 화면 안쪽 우상단 — top: 화면 상단 +4px, right: 화면 우측 -1px (gap 1px) */
+.top-controls {
+  position: absolute;
+  top: calc(var(--screen-top-pct) - 2.5%);
+  right: calc(100% - var(--screen-left-pct) - var(--screen-width-pct) - 0.625%);
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  z-index: 2;
+}
+
+.top-controls .btn {
+  position: static;
+  font-size: calc(var(--computer-width) / 40);
+  padding: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8em;
+  height: 1.2em;
+  box-sizing: content-box;
+}
+
+.mute-btn.muted {
+  opacity: 0.35;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* textarea 바로 아래 중앙 */
+.save-btn {
+  top: calc(var(--screen-top-pct) + var(--screen-height-pct) - 1%);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.save-btn:active {
+  transform: translateX(-50%) translateY(1px);
+}
+
+/* 우하단 리사이즈 그립 */
+.resize-grip {
+  right: 4%;
+  bottom: 3%;
+  font-size: calc(var(--computer-width) / 28);
+  line-height: 1;
+  opacity: 0.45;
+  cursor: nwse-resize;
+  padding: 0.1em 0.2em;
+  user-select: none;
+}
+
+.resize-grip:hover {
+  opacity: 1;
+}
+
+.resize-grip:active {
+  transform: none;
+}
+
+.saved-toast {
+  position: absolute;
+  top: calc(var(--screen-top-pct) + var(--screen-height-pct) / 2 - 0.6em);
+  left: var(--screen-left-pct);
+  width: var(--screen-width-pct);
+  text-align: center;
+  color: var(--crt-green);
+  font-family: "VT323", "Courier New", monospace;
+  font-size: calc(var(--computer-width) / 25);
+  text-shadow: 0 0 10px rgba(0, 255, 65, 1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out;
+}
+
+.saved-toast.visible {
+  opacity: 1;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-6px, 0); }
+  40% { transform: translate(6px, 0); }
+  60% { transform: translate(-4px, 0); }
+  80% { transform: translate(4px, 0); }
+}
+
+.screen-wrap.shake {
+  animation: shake 0.4s ease-in-out;
+}
