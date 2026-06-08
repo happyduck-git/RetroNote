@@ -58,6 +58,13 @@ body {
   pointer-events: none;
 }
 
+/* 뷰 마운트 레이어 — computer-wrap 전체를 덮는 투명 컨테이너.
+   뷰 내부 요소는 기존처럼 --screen-*-pct 좌표로 절대배치되어 화면 영역에 자리잡는다. */
+.screen {
+  position: absolute;
+  inset: 0;
+}
+
 #note {
   position: absolute;
   top: var(--screen-top-pct);

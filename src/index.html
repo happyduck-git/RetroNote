@@ -23,22 +23,13 @@
           draggable="false"
         />
 
-        <textarea
-          id="note"
-          spellcheck="false"
-          autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-          placeholder="⌘+= / ⌘+- to resize · ⌘+0 to reset"
-        ></textarea>
-
-        <div class="saved-toast" id="saved-toast">[ SAVED ]</div>
+        <!-- 뷰 마운트 노드: 화면 영역을 덮는 투명 레이어. 각 뷰가 여기에 렌더된다. -->
+        <div class="screen" id="screen"></div>
 
         <div class="top-controls">
           <button class="btn mute-btn" id="mute-btn" title="Mute">[♪]</button>
           <button class="btn close-btn" id="close-btn" title="Close">[X]</button>
         </div>
-        <button class="btn save-btn" id="save-btn" title="Save">[ SAVE ]</button>
         <button
           class="btn resize-grip"
           id="resize-grip"
