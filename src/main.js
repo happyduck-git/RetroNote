@@ -128,6 +128,11 @@ window.addEventListener("DOMContentLoaded", () => {
   const closeBtn = document.getElementById("close-btn");
   const toast = document.getElementById("saved-toast");
 
+  // 단축키 안내 문구를 OS에 맞춰 표기 (macOS: ⌘, Windows: Ctrl).
+  // 단축키 핸들러는 metaKey/ctrlKey 둘 다 받으므로 기능은 동일하고 표기만 보정한다.
+  const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
+  note.placeholder = `${mod}+= / ${mod}+- to resize · ${mod}+0 to reset`;
+
   initKeySound();
 
   // Autofocus on launch
