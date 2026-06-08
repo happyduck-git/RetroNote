@@ -1,0 +1,47 @@
+name: Build Windows (verify)
+
+# 릴리스를 만들지 않고, Windows 설치파일을 아티팩트로만 빌드한다.
+# fix 브랜치 푸시 시 자동 실행되거나, Actions 탭에서 수동(Run workflow) 실행.
+# 빌드가 끝나면 Actions 실행 페이지 하단 Artifacts 에서 .exe/.msi 를 받아
+# 실제 Windows 머신에서 close/resize/drag/단축키 안내를 검증한다.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/windows-bugs"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app (Windows bundles)
+        run: npm run tauri build
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: retro-note-windows
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
