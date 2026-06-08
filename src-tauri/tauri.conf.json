@@ -21,7 +21,6 @@
         "maxHeight": 1260,
         "decorations": false,
         "transparent": true,
-        "alwaysOnTop": true,
         "resizable": false
       }
     ],
