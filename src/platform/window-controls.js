@@ -84,10 +84,12 @@ export function initWindowControls(container) {
     });
   }
 
-  // 명시적 드래그 핸들러 — 투명 창에서 -webkit-app-region이 종종 누락되는 문제 보완
+  // 명시적 드래그 핸들러 — 투명 창에서 -webkit-app-region이 종종 누락되는 문제 보완.
+  // 인터랙티브 요소(텍스트 입력/버튼)와 [data-no-drag] 표시된 영역(채팅 목록/입력 등)에서는
+  // 드래그를 시작하지 않아 스크롤·선택·클릭이 정상 동작한다.
   container.addEventListener("mousedown", async (e) => {
     if (e.button !== 0) return;
-    if (e.target.closest("textarea, button")) return;
+    if (e.target.closest("textarea, input, button, [data-no-drag]")) return;
     await getCurrentWindow().startDragging();
   });
 
