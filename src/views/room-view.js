@@ -1,8 +1,9 @@
 // 채팅방: 메시지 목록 + 입력 + 전송 + 나가기. 연결 상태/온라인 인원 표시.
-// 입장 이후 메시지만 수신(broadcast 비저장). 본인 메시지는 낙관적으로 즉시 렌더.
+// 영속 메시지는 Postgres에서 history fetch → store.seed. 새 메시지는 postgres_changes echo.
+// 송신은 transport.send (DB INSERT) → echo로 자기 자신에게도 돌아오지만 store의 id dedup이 처리.
 import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
-import { getNickname, getClientId, openRoom, closeRoom, saveRoom } from "../chat/session.js";
+import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom } from "../chat/session.js";
 
 const STATUS_TEXT = {
   connecting: "connecting…",
@@ -22,22 +23,42 @@ export const roomView = {
   _code: null,
   _cleanup: null,
 
-  mount(screenEl, params, ctx) {
+  async mount(screenEl, params, ctx) {
     const code = params.code;
-    this._code = code;
-    const nickname = getNickname();
+    const nickname = getRoomNickname(code);
     const clientId = getClientId();
+    this._cancelled = false;
+
+    // 안전망: 닉네임 없이 직접 진입한 경우(라우터 직접 호출 등) nickname으로 우회.
+    if (!nickname) {
+      ctx.navigate("nickname", { code });
+      return;
+    }
+
+    // 로딩 중 화면(history fetch 동안 표시).
+    const loading = el("div", { class: "form-label", text: "loading history…" });
+    screenEl.append(el("div", { class: "room" }, [loading]));
 
     let entry;
     try {
-      entry = openRoom(code);
-    } catch {
-      ctx.navigate("lobby");
+      entry = await openRoom(code);
+    } catch (e) {
+      console.error("openRoom failed:", e);
+      if (!this._cancelled) ctx.navigate("lobby");
       return;
     }
+    // mount 도중 사용자가 다른 화면으로 이동 → 정리하고 종료.
+    if (this._cancelled) {
+      closeRoom(code);
+      return;
+    }
+    this._code = code;
     saveRoom(code);
     const { transport, store } = entry;
     store.start();
+
+    // 본격 마운트 — 로딩 화면을 교체.
+    screenEl.replaceChildren();
 
     // --- header ---
     const codeLabel = el("span", { class: "room-code", text: code });
@@ -119,14 +140,20 @@ export const roomView = {
       renderStatus();
     });
 
-    // --- send ---
-    function doSend() {
+    // --- send: DB INSERT 하나로 보내고, postgres_changes echo가 자기 자신에게도 돌아옴.
+    // 즉시 응답을 위해 낙관적 add도 함께 한다(중복은 store의 id dedup이 처리).
+    async function doSend() {
       const text = input.value.trim();
       if (!text) return;
       const msg = { id: crypto.randomUUID(), clientId, nickname, text, ts: Date.now() };
       input.value = "";
-      store.add(msg); // 낙관적 로컬 렌더 (self:false라 에코 없음)
-      transport.send(msg).catch((e) => console.error("send failed:", e));
+      store.add(msg); // 낙관적 로컬 렌더
+      try {
+        await transport.send(msg);
+      } catch (e) {
+        console.error("send failed:", e);
+        // 실패해도 낙관적으로 표시된 메시지는 그대로 둔다(사용자가 재전송 결정).
+      }
     }
     sendBtn.addEventListener("click", doSend);
     input.addEventListener("keydown", (e) => {
@@ -154,6 +181,7 @@ export const roomView = {
   },
 
   unmount() {
+    this._cancelled = true;
     if (this._cleanup) this._cleanup();
     this._cleanup = null;
     if (this._code) closeRoom(this._code);

@@ -1,6 +1,9 @@
-// Supabase Realtime Broadcast 기반 ChatTransport 구현.
-// 채널 토픽 = `room:<code>`. 메시지는 저장되지 않으므로 입장 이후 메시지만 수신된다.
-// supabase-js 번들은 connect() 시점에 동적 import 한다 → 채팅 미사용 빌드는 로드 비용 0.
+// Supabase Realtime postgres_changes 기반 ChatTransport 구현.
+// 한 채널 `room:<code>` 에서 presence(온라인 인원) + postgres_changes(messages 테이블 INSERT)를
+// 함께 구독한다. 송신은 DB INSERT 한 번 — postgres_changes echo가 자기 자신에게도 돌아온다.
+// 중복은 message-store의 id dedup으로 처리.
+import { getClient } from "../auth/auth.js";
+import { insertMessage, rowToMsg } from "./message-history.js";
 
 const STATUS_MAP = {
   SUBSCRIBED: "connected",
@@ -9,9 +12,10 @@ const STATUS_MAP = {
   CLOSED: "closed",
 };
 
-export function createSupabaseTransport({ url, anonKey }) {
+export function createSupabaseTransport() {
   let client = null;
   let channel = null;
+  let currentCode = null;
   const handlers = { message: new Set(), status: new Set(), presence: new Set() };
 
   function on(event, handler) {
@@ -27,15 +31,17 @@ export function createSupabaseTransport({ url, anonKey }) {
 
   async function connect(roomCode, who) {
     emit("status", { state: "connecting" });
-    const { createClient } = await import("../vendor/supabase.js");
-    client = createClient(url, anonKey, {
-      realtime: { params: { eventsPerSecond: 10 } },
-    });
+    client = await getClient();
+    currentCode = roomCode;
     channel = client.channel(`room:${roomCode}`, {
-      config: { broadcast: { self: false }, presence: { key: who.clientId } },
+      config: { presence: { key: who.clientId } },
     });
 
-    channel.on("broadcast", { event: "msg" }, ({ payload }) => emit("message", payload));
+    channel.on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "messages", filter: `room_code=eq.${roomCode}` },
+      (payload) => emit("message", rowToMsg(payload.new)),
+    );
     channel.on("presence", { event: "sync" }, () => {
       const state = channel.presenceState();
       emit("presence", { count: Object.keys(state).length, members: state });
@@ -61,9 +67,10 @@ export function createSupabaseTransport({ url, anonKey }) {
     });
   }
 
+  // DB INSERT 하나로 끝. postgres_changes 가 모든 구독자(본인 포함)에게 메시지를 전달.
   async function send(message) {
-    if (!channel) throw new Error("not connected");
-    await channel.send({ type: "broadcast", event: "msg", payload: message });
+    if (!currentCode) throw new Error("not connected");
+    await insertMessage(message, currentCode);
   }
 
   async function leave() {
@@ -71,6 +78,7 @@ export function createSupabaseTransport({ url, anonKey }) {
       await client.removeChannel(channel);
     }
     channel = null;
+    currentCode = null;
   }
 
   return { connect, send, leave, on };

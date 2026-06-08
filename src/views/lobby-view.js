@@ -2,14 +2,27 @@
 import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
 import { generate6, isValid, normalize, CODE_LENGTH } from "../chat/room-code.js";
-import { getSavedRooms, setRoomAlias, removeSavedRoom } from "../chat/session.js";
+import { getSavedRooms, setRoomAlias, removeSavedRoom, canAddRoom, MAX_SAVED_ROOMS, getRoomNickname } from "../chat/session.js";
+
+// 방에 들어가기 직전 닉네임 게이트: 방별 닉네임이 없으면 nickname 뷰로, 있으면 바로 room으로.
+function enterRoom(ctx, code) {
+  if (getRoomNickname(code)) ctx.navigate("room", { code });
+  else ctx.navigate("nickname", { code });
+}
 
 export const lobbyView = {
   mount(screenEl, params, ctx) {
     const createBtn = el("button", {
       class: "btn lobby-btn",
       text: "[ CREATE ROOM ]",
-      onClick: () => ctx.navigate("room", { code: generate6() }),
+      onClick: () => {
+        // CREATE는 항상 새 코드 → saved 목록 길이만 체크.
+        if (getSavedRooms().length >= MAX_SAVED_ROOMS) {
+          alert(`Max ${MAX_SAVED_ROOMS} chat rooms reached.\nDelete one before creating a new room.`);
+          return;
+        }
+        enterRoom(ctx, generate6());
+      },
     });
     const sep = el("div", { class: "lobby-sep", text: "— or —" });
     const input = el("input", {
@@ -31,7 +44,12 @@ export const lobbyView = {
         input.focus();
         return;
       }
-      ctx.navigate("room", { code });
+      // 이미 saved 목록에 있는 방 재입장은 허용. 새 방인데 상한 초과면 alert.
+      if (!canAddRoom(code)) {
+        alert(`Max ${MAX_SAVED_ROOMS} chat rooms reached.\nDelete one before joining a new room.`);
+        return;
+      }
+      enterRoom(ctx, code);
     }
 
     joinBtn.addEventListener("click", join);
@@ -79,10 +97,12 @@ function renderSavedRooms(container, ctx) {
       class: "btn saved-room-delete",
       title: "Delete",
       text: "[×]",
-      onClick: (e) => {
+      onClick: async (e) => {
         e.stopPropagation();
         playKey();
-        removeSavedRoom(room.code);
+        const label = room.alias ? `${room.code} (${room.alias})` : room.code;
+        if (!confirm(`Delete chat room "${label}"?\nPrevious history will be hidden from your account.`)) return;
+        await removeSavedRoom(room.code);
         renderSavedRooms(container, ctx);
       },
     });
@@ -93,7 +113,7 @@ function renderSavedRooms(container, ctx) {
         class: "saved-room-item",
         onClick: () => {
           playKey();
-          ctx.navigate("room", { code: room.code });
+          enterRoom(ctx, room.code);
         },
       },
       [codeEl, aliasEl, actions],

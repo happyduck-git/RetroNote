@@ -332,6 +332,11 @@ body {
   font-size: calc(var(--computer-width) / 30);
 }
 
+/* 보조 액션(모드 전환 / forgot password 등) — 기본 form-btn의 절반 정도 크기 */
+.form-btn-small {
+  font-size: calc(var(--computer-width) / 60);
+}
+
 /* ----- 채팅방 ----- */
 .room {
   gap: 0.25em;
