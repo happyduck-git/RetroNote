@@ -57,10 +57,14 @@ Tauri 2 기반으로 macOS와 Windows에서 네이티브로 동작합니다.
 
 1. 무료 Supabase 프로젝트를 생성합니다.
 2. **Project Settings → API** 에서 **Project URL** 과 **anon public** 키를 복사합니다.
-3. `src/config.js` 에 붙여넣습니다:
+3. 템플릿을 복사해 값을 채웁니다 (`config.js` 는 gitignore 되어 키가 저장소에 안 올라갑니다):
+   ```bash
+   cp src/config.example.js src/config.js
+   ```
    ```js
+   // src/config.js
    export const SUPABASE = {
-     url: "https://YOUR-PROJECT.supabase.co",
+     url: "https://YOUR-PROJECT.supabase.co", // 경로(/rest/v1) 없이 베이스 주소만
      anonKey: "YOUR-ANON-PUBLIC-KEY",
    };
    ```

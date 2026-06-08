@@ -57,10 +57,14 @@ Chat needs a realtime backend. The [Supabase](https://supabase.com) **free plan*
 
 1. Create a free Supabase project.
 2. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
-3. Paste them into `src/config.js`:
+3. Copy the template and fill it in (`config.js` is gitignored, so your keys stay out of the repo):
+   ```bash
+   cp src/config.example.js src/config.js
+   ```
    ```js
+   // src/config.js
    export const SUPABASE = {
-     url: "https://YOUR-PROJECT.supabase.co",
+     url: "https://YOUR-PROJECT.supabase.co", // base URL only, no /rest/v1 path
      anonKey: "YOUR-ANON-PUBLIC-KEY",
    };
    ```
