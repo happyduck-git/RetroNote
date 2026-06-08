@@ -57,17 +57,18 @@ Chat needs a realtime backend. The [Supabase](https://supabase.com) **free plan*
 
 1. Create a free Supabase project.
 2. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
-3. Copy the template and fill it in (`config.js` is gitignored, so your keys stay out of the repo):
+3. Copy the template and fill it in (`config.local.js` is gitignored, so your keys stay out of the repo):
    ```bash
-   cp src/config.example.js src/config.js
+   cp src/config.local.example.js src/config.local.js
    ```
    ```js
-   // src/config.js
+   // src/config.local.js
    export const SUPABASE = {
      url: "https://YOUR-PROJECT.supabase.co", // base URL only, no /rest/v1 path
      anonKey: "YOUR-ANON-PUBLIC-KEY",
    };
    ```
+   `src/config.js` loads these keys at runtime if present; without `config.local.js` the app still runs with chat disabled.
 4. Rebuild / re-run. If both values are empty, the **[ CHAT ]** button stays disabled and only notes work.
 
 Notes:

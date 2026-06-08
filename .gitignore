@@ -26,5 +26,5 @@ dist-ssr
 # Claude Code session data
 .claude/
 
-# Local chat secrets (copy config.example.js -> config.js)
-src/config.js
+# Local chat secrets (copy config.local.example.js -> config.local.js)
+src/config.local.js

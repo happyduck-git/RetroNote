@@ -57,17 +57,18 @@ Tauri 2 기반으로 macOS와 Windows에서 네이티브로 동작합니다.
 
 1. 무료 Supabase 프로젝트를 생성합니다.
 2. **Project Settings → API** 에서 **Project URL** 과 **anon public** 키를 복사합니다.
-3. 템플릿을 복사해 값을 채웁니다 (`config.js` 는 gitignore 되어 키가 저장소에 안 올라갑니다):
+3. 템플릿을 복사해 값을 채웁니다 (`config.local.js` 는 gitignore 되어 키가 저장소에 안 올라갑니다):
    ```bash
-   cp src/config.example.js src/config.js
+   cp src/config.local.example.js src/config.local.js
    ```
    ```js
-   // src/config.js
+   // src/config.local.js
    export const SUPABASE = {
      url: "https://YOUR-PROJECT.supabase.co", // 경로(/rest/v1) 없이 베이스 주소만
      anonKey: "YOUR-ANON-PUBLIC-KEY",
    };
    ```
+   `src/config.js` 가 실행 시 이 키를 불러옵니다. `config.local.js` 가 없어도 앱은 정상 실행되며 채팅만 비활성화됩니다.
 4. 다시 빌드/실행합니다. 두 값이 비어 있으면 **[ CHAT ]** 버튼이 비활성화되고 노트 기능만 동작합니다.
 
 참고:
