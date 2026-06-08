@@ -1,6 +1,7 @@
 // 채팅방: 메시지 목록 + 입력 + 전송 + 나가기. 연결 상태/온라인 인원 표시.
 // 입장 이후 메시지만 수신(broadcast 비저장). 본인 메시지는 낙관적으로 즉시 렌더.
 import { el } from "../core/dom.js";
+import { playKey } from "../platform/sound.js";
 import { getNickname, getClientId, openRoom, closeRoom } from "../chat/session.js";
 
 const STATUS_TEXT = {
@@ -128,6 +129,7 @@ export const roomView = {
     }
     sendBtn.addEventListener("click", doSend);
     input.addEventListener("keydown", (e) => {
+      playKey(); // 레트로 일관성: 채팅 입력도 키사운드 재생
       if (e.key === "Enter") {
         e.preventDefault();
         doSend();

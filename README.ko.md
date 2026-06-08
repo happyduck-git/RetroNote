@@ -21,6 +21,7 @@ Tauri 2 기반으로 macOS와 Windows에서 네이티브로 동작합니다.
 - 우측 하단 초록 세모 그립 드래그 또는 단축키로 창 크기 조절
 - 본체 아트가 깨지지 않도록 종횡비 고정
 - 키스트로크 사운드 음소거 토글
+- **휘발성 채팅** — 코드로 방에 입장해 실시간 대화, 메시지는 1시간 후 사라짐 (선택 기능, 무료 Supabase 프로젝트 필요)
 
 ## 단축키
 
@@ -39,6 +40,36 @@ Tauri 2 기반으로 macOS와 Windows에서 네이티브로 동작합니다.
 - **Windows**: `C:\Users\<사용자명>\Documents\retro-notes\`
 
 파일명 형식: `note_YYYY-MM-DD_HH-MM.txt`
+
+## 채팅 (휘발성)
+
+앱을 켜면 화면에 **[ NOTE ]** 와 **[ CHAT ]** 가 뜹니다. CHAT을 고르면:
+
+1. 닉네임을 한 번 설정합니다 (로컬 저장, 처음에만 물어봄).
+2. **방 생성**으로 6자리 코드를 발급받거나, 공유받은 코드를 **입력해 입장**합니다.
+3. 실시간으로 대화합니다. 메시지는 **1시간 후 사라지며**, 나중에 들어온 사람은 **입장 이후 메시지만** 봅니다 — 이전 기록은 없습니다.
+
+채팅은 순수 broadcast 방식이라 서버에 아무것도 저장되지 않습니다. 방 코드가 유일한 접근 수단이므로 민감한 정보는 주고받지 마세요.
+
+### 채팅 설정 (Supabase)
+
+채팅에는 실시간 백엔드가 필요합니다. [Supabase](https://supabase.com) **무료 플랜**으로 충분합니다:
+
+1. 무료 Supabase 프로젝트를 생성합니다.
+2. **Project Settings → API** 에서 **Project URL** 과 **anon public** 키를 복사합니다.
+3. `src/config.js` 에 붙여넣습니다:
+   ```js
+   export const SUPABASE = {
+     url: "https://YOUR-PROJECT.supabase.co",
+     anonKey: "YOUR-ANON-PUBLIC-KEY",
+   };
+   ```
+4. 다시 빌드/실행합니다. 두 값이 비어 있으면 **[ CHAT ]** 버튼이 비활성화되고 노트 기능만 동작합니다.
+
+참고:
+- anon key는 공개 가능한 키라 커밋해도 안전합니다. Supabase의 **Realtime Authorization** 은 기본값(off)으로 두어야 익명 클라이언트가 broadcast 채널을 쓸 수 있습니다.
+- 무료 플랜 프로젝트는 약 1주 미사용 시 일시정지됩니다. 대시보드에서 **Restore** 를 누르면 재개됩니다 (무료 유지, 데이터 보존).
+- 이 앱은 `csp: null` 이라 WebSocket 연결이 허용됩니다. 추후 Content-Security-Policy를 설정한다면 `connect-src https://*.supabase.co wss://*.supabase.co` 를 추가하세요.
 
 ## 소스에서 빌드
 

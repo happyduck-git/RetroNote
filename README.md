@@ -21,6 +21,7 @@ Built with Tauri 2, runs natively on macOS and Windows.
 - Resize via the green triangle grip (bottom-right) or keyboard shortcuts
 - Aspect ratio is locked to keep the chassis art intact
 - Mute toggle for the keystroke sound
+- **Ephemeral chat** — join a room by code and chat in real time; messages vanish after 1 hour (optional, needs a free Supabase project)
 
 ## Keyboard shortcuts
 
@@ -39,6 +40,36 @@ Saved as plain `.txt` files in:
 - **Windows**: `C:\Users\<you>\Documents\retro-notes\`
 
 Filename pattern: `note_YYYY-MM-DD_HH-MM.txt`
+
+## Chat (ephemeral)
+
+On launch the screen offers **[ NOTE ]** and **[ CHAT ]**. Pick CHAT and:
+
+1. Set a nickname once (stored locally, asked only the first time).
+2. **Create a room** to get a 6-character code, or **join** by typing a code someone shared.
+3. Chat in real time. Messages **disappear after 1 hour**, and anyone who joins later sees **only messages sent after they joined** — there is no history.
+
+The chat is pure broadcast: nothing is stored on a server. Room codes are the only access control, so don't share sensitive information.
+
+### Set up chat (Supabase)
+
+Chat needs a realtime backend. The [Supabase](https://supabase.com) **free plan** is plenty:
+
+1. Create a free Supabase project.
+2. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
+3. Paste them into `src/config.js`:
+   ```js
+   export const SUPABASE = {
+     url: "https://YOUR-PROJECT.supabase.co",
+     anonKey: "YOUR-ANON-PUBLIC-KEY",
+   };
+   ```
+4. Rebuild / re-run. If both values are empty, the **[ CHAT ]** button stays disabled and only notes work.
+
+Notes:
+- The anon key is a publishable key — it's safe to commit. Keep Supabase's **Realtime Authorization** at its default (off) so anonymous clients can use broadcast channels.
+- Free-plan projects pause after ~1 week of inactivity; click **Restore** in the dashboard to resume (still free, data intact).
+- This app ships with `csp: null`, so WebSocket connections are allowed. If you later set a Content-Security-Policy, add `connect-src https://*.supabase.co wss://*.supabase.co`.
 
 ## Build from source
 
