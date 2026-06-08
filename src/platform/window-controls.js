@@ -1,5 +1,8 @@
 // 창 제어: 리사이즈 그립, 드래그 이동, Cmd/Ctrl ±/0 줌, 핀치 줌, 닫기 버튼, 종횡비 클램프.
-const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
+// Tauri 외 환경(브라우저)에서는 window API가 없으므로 창 제어를 통째로 건너뛴다.
+const tauriWindow = window.__TAURI__?.window;
+const getCurrentWindow = tauriWindow?.getCurrentWindow;
+const LogicalSize = tauriWindow?.LogicalSize;
 
 const WIN_MIN = { w: 400, h: 360 };
 const WIN_MAX = { w: 1400, h: 1260 };
@@ -41,6 +44,8 @@ async function resetWindowSize() {
 }
 
 export function initWindowControls(container) {
+  if (!tauriWindow) return; // 브라우저 등 Tauri 외 환경: 창 제어 비활성(채팅 테스트용)
+
   const closeBtn = document.getElementById("close-btn");
   if (closeBtn) {
     closeBtn.addEventListener("click", async () => {
