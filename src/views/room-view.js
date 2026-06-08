@@ -2,7 +2,7 @@
 // 입장 이후 메시지만 수신(broadcast 비저장). 본인 메시지는 낙관적으로 즉시 렌더.
 import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
-import { getNickname, getClientId, openRoom, closeRoom } from "../chat/session.js";
+import { getNickname, getClientId, openRoom, closeRoom, saveRoom } from "../chat/session.js";
 
 const STATUS_TEXT = {
   connecting: "connecting…",
@@ -35,6 +35,7 @@ export const roomView = {
       ctx.navigate("lobby");
       return;
     }
+    saveRoom(code);
     const { transport, store } = entry;
     store.start();
 
