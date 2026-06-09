@@ -41,6 +41,20 @@ export async function ensureMembership(code) {
   return Number(data.first_joined_at);
 }
 
+// 현재 사용자의 모든 방 멤버십 조회. RLS가 user_id=auth.uid() 로 자동 한정하므로
+// 본인이 입장했던 방들만 반환된다. 새 기기/재설치 후 로비 목록 복원에 사용.
+export async function fetchMemberships() {
+  const client = await getClient();
+  const { data, error } = await client
+    .from("room_memberships")
+    .select("room_code, first_joined_at");
+  if (error) throw error;
+  return data.map((r) => ({
+    code: r.room_code,
+    firstJoinedAt: Number(r.first_joined_at),
+  }));
+}
+
 export async function fetchMessages(code, sinceTs) {
   const client = await getClient();
   const { data, error } = await client

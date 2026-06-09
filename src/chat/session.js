@@ -2,7 +2,7 @@
 // 메시지 영속화는 Postgres가 담당하므로 여기서는 단순 보관/생명주기만 다룬다.
 import { createTransport } from "./transport.js";
 import { createMessageStore } from "./message-store.js";
-import { ensureMembership, fetchMessages, deleteMembership } from "./message-history.js";
+import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships } from "./message-history.js";
 import { normalize, isValid } from "./room-code.js";
 
 const NICK_KEY = "retro-chat.nick";       // (legacy) 글로벌 닉네임 — 신규 방의 prefill 힌트로만 사용
@@ -151,6 +151,32 @@ function writeSavedRooms(list) {
 
 export function getSavedRooms() {
   return readSavedRooms().sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+}
+
+// 서버(room_memberships)의 멤버십을 로컬 방 목록에 병합한다.
+// 새 기기/재설치 후 로그인하면 localStorage가 비어 로비가 빈다 → 서버에서 복원.
+// alias/방별 닉네임은 로컬 전용이라 복원되지 않고 코드만 채워진다.
+// MAX_SAVED_ROOMS 상한을 지키며, first_joined_at 최신순으로 우선 채운다.
+// 반환: 새로 추가된 방이 하나라도 있으면 true(호출 측에서 재렌더 판단용).
+export async function syncRoomsFromServer() {
+  const memberships = await fetchMemberships();
+  if (!memberships.length) return false;
+  const list = readSavedRooms();
+  const known = new Set(list.map((r) => r.code));
+  // 상한 초과 시 최근 입장한 방부터 복원되도록 정렬.
+  memberships.sort((a, b) => (b.firstJoinedAt || 0) - (a.firstJoinedAt || 0));
+  let added = false;
+  for (const m of memberships) {
+    if (!isValid(m.code)) continue;
+    const code = normalize(m.code);
+    if (known.has(code)) continue;
+    if (list.length >= MAX_SAVED_ROOMS) break;
+    list.push({ code, alias: "", lastUsedAt: m.firstJoinedAt || 0 });
+    known.add(code);
+    added = true;
+  }
+  if (added) writeSavedRooms(list);
+  return added;
 }
 
 // 방을 새로 추가 가능한지 확인. 이미 목록에 있는 코드 재입장은 항상 허용.

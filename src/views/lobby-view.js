@@ -3,7 +3,7 @@ import { el } from "../core/dom.js";
 import { confirmDialog } from "../core/confirm.js";
 import { playKey } from "../platform/sound.js";
 import { generate6, isValid, normalize, CODE_LENGTH } from "../chat/room-code.js";
-import { getSavedRooms, setRoomAlias, removeSavedRoom, canAddRoom, MAX_SAVED_ROOMS, getRoomNickname } from "../chat/session.js";
+import { getSavedRooms, setRoomAlias, removeSavedRoom, canAddRoom, MAX_SAVED_ROOMS, getRoomNickname, syncRoomsFromServer } from "../chat/session.js";
 
 // 방에 들어가기 직전 닉네임 게이트: 방별 닉네임이 없으면 nickname 뷰로, 있으면 바로 room으로.
 function enterRoom(ctx, code) {
@@ -68,6 +68,15 @@ export const lobbyView = {
     renderSavedRooms(savedSection, ctx);
 
     screenEl.append(el("div", { class: "lobby" }, [createBtn, sep, input, joinBtn, err, savedSection]));
+
+    // 로컬 목록을 먼저 그린 뒤, 서버 멤버십에서 방을 복원한다(새 기기/재설치 대응).
+    // 추가된 방이 있을 때만 재렌더. 실패는 비핵심이라 조용히 무시.
+    syncRoomsFromServer()
+      .then((added) => {
+        // 비동기 완료 시점에 뷰가 교체됐을 수 있으므로 DOM 연결 여부 확인.
+        if (added && savedSection.isConnected) renderSavedRooms(savedSection, ctx);
+      })
+      .catch((e) => console.error("room sync failed:", e));
   },
 };
 
