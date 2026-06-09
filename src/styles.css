@@ -504,3 +504,53 @@ body {
   padding: 0 0.25em;
 }
 
+/* ----- 인앱 확인 모달 (네이티브 confirm 우회) ----- */
+.modal-overlay {
+  position: absolute;
+  top: var(--screen-top-pct);
+  left: var(--screen-left-pct);
+  width: var(--screen-width-pct);
+  height: var(--screen-height-pct);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 10;
+  -webkit-app-region: no-drag;
+}
+
+.modal-box {
+  width: 86%;
+  border: 1px solid var(--crt-green);
+  background: rgba(0, 0, 0, 0.92);
+  box-shadow: 0 0 10px rgba(0, 255, 65, 0.4);
+  padding: 0.7em 0.7em 0.55em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  color: var(--crt-green);
+  font-family: "VT323", "Courier New", monospace;
+  text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+}
+
+.modal-message {
+  font-size: calc(var(--computer-width) / 44);
+  line-height: 1.25;
+  text-align: center;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.8em;
+}
+
+.modal-btn {
+  position: static;
+  font-size: calc(var(--computer-width) / 42);
+}
+
+.modal-cancel {
+  opacity: 0.8;
+}
+

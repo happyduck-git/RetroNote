@@ -1,5 +1,6 @@
 // 로비: 방 생성(코드 발급) 또는 코드로 입장 + 최근 방 목록.
 import { el } from "../core/dom.js";
+import { confirmDialog } from "../core/confirm.js";
 import { playKey } from "../platform/sound.js";
 import { generate6, isValid, normalize, CODE_LENGTH } from "../chat/room-code.js";
 import { getSavedRooms, setRoomAlias, removeSavedRoom, canAddRoom, MAX_SAVED_ROOMS, getRoomNickname } from "../chat/session.js";
@@ -101,7 +102,11 @@ function renderSavedRooms(container, ctx) {
         e.stopPropagation();
         playKey();
         const label = room.alias ? `${room.code} (${room.alias})` : room.code;
-        if (!confirm(`Delete chat room "${label}"?\nPrevious history will be hidden from your account.`)) return;
+        const ok = await confirmDialog(
+          `Delete chat room "${label}"?\nPrevious history will be hidden from your account.`,
+          { okLabel: "DELETE" },
+        );
+        if (!ok) return;
         await removeSavedRoom(room.code);
         renderSavedRooms(container, ctx);
       },
