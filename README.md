@@ -21,7 +21,7 @@ Built with Tauri 2, runs natively on macOS and Windows.
 - Resize via the green triangle grip (bottom-right) or keyboard shortcuts
 - Aspect ratio is locked to keep the chassis art intact
 - Mute toggle for the keystroke sound
-- **Ephemeral chat** — join a room by code and chat in real time; messages vanish after 1 hour (optional, needs a free Supabase project)
+- **Chat rooms** — join a room by code and chat in real time (optional, needs a free Supabase project)
 
 ## Keyboard shortcuts
 
@@ -41,15 +41,15 @@ Saved as plain `.txt` files in:
 
 Filename pattern: `note_YYYY-MM-DD_HH-MM.txt`
 
-## Chat (ephemeral)
+## Chat
 
 On launch the screen offers **[ NOTE ]** and **[ CHAT ]**. Pick CHAT and:
 
 1. Set a nickname once (stored locally, asked only the first time).
 2. **Create a room** to get a 6-character code, or **join** by typing a code someone shared.
-3. Chat in real time. Messages **disappear after 1 hour**, and anyone who joins later sees **only messages sent after they joined** — there is no history.
+3. Chat in real time. Anyone who joins later sees **only messages sent after they joined** — there is no history.
 
-The chat is pure broadcast: nothing is stored on a server. Room codes are the only access control, so don't share sensitive information.
+Room codes are the only access control, so don't share sensitive information.
 
 ### Set up chat (Supabase)
 
