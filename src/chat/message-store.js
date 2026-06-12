@@ -3,7 +3,10 @@
 // 메시지는 도착 순서대로 append (발신자 시계 편차에 따른 재정렬은 하지 않음).
 const MAX_MESSAGES = 500; // 방당 메모리 상한. 초과 시 가장 오래된 것부터 버린다.
 
-export function createMessageStore(clientId) {
+// userId: 현재 로그인 사용자의 auth.uid. mine 판정 기준.
+// 과거에는 clientId(기기별 UUID)로 판정했으나, 다른 기기에서 보낸 본인 메시지가
+// "타인" 으로 표시되는 문제가 있어 senderUid 비교로 변경. clientId 는 presence 키 등에서 계속 사용.
+export function createMessageStore(userId) {
   let messages = [];
   const ids = new Set();
   const subs = new Set();
@@ -25,7 +28,7 @@ export function createMessageStore(clientId) {
     ids.clear();
     for (const m of initial) {
       if (ids.has(m.id)) continue;
-      m.mine = m.clientId === clientId;
+      m.mine = !!userId && m.senderUid === userId;
       messages.push(m);
       ids.add(m.id);
     }
@@ -35,7 +38,7 @@ export function createMessageStore(clientId) {
 
   function add(msg) {
     if (ids.has(msg.id)) return; // dedup: postgres_changes echo / 낙관적 추가 중복
-    msg.mine = msg.clientId === clientId;
+    msg.mine = !!userId && msg.senderUid === userId;
     messages.push(msg);
     ids.add(msg.id);
     trim();

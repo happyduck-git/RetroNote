@@ -47,6 +47,13 @@ export async function getSession() {
   return data?.session || null;
 }
 
+// 현재 로그인 사용자의 auth.uid. 로그인 안 된 상태면 null.
+// 메시지 ownership 판정(message-store) 및 본인 메시지 envelope 채움에 사용.
+export async function getCurrentUserId() {
+  const session = await getSession();
+  return session?.user?.id || null;
+}
+
 // cb는 (event, session) 시그니처. unsubscribe 함수를 반환.
 export async function onAuthChange(cb) {
   const client = await getClient();

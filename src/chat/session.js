@@ -2,8 +2,9 @@
 // 메시지 영속화는 Postgres가 담당하므로 여기서는 단순 보관/생명주기만 다룬다.
 import { createTransport } from "./transport.js";
 import { createMessageStore } from "./message-store.js";
-import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships } from "./message-history.js";
+import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships, updateMembershipNickname, fetchMyLastNicknamesByRoom } from "./message-history.js";
 import { normalize, isValid } from "./room-code.js";
+import { getCurrentUserId } from "../auth/auth.js";
 
 const NICK_KEY = "retro-chat.nick";       // (legacy) 글로벌 닉네임 — 신규 방의 prefill 힌트로만 사용
 const CID_KEY = "retro-chat.cid";
@@ -86,6 +87,9 @@ const rooms = new Map(); // code -> { code, clientId, transport, store }
 
 // 방을 열고 DB에서 history를 fetch해 store에 seed한다.
 // 멤버십이 없으면 first_joined_at=now 로 생성 → 이후 그 시점부터의 메시지만 보인다.
+// 로컬↔서버 방별 닉네임 양방향 동기화도 여기서 수행:
+//  - 로컬 O, 서버 NULL → 서버로 push (기존 사용자 첫 진입 시 backfill)
+//  - 서버 O, 로컬 X → 로컬에 채움 (다른 기기 첫 진입 시)
 export async function openRoom(rawCode) {
   const code = normalize(rawCode);
   if (rooms.has(code)) return rooms.get(code);
@@ -93,11 +97,24 @@ export async function openRoom(rawCode) {
     throw new Error("ROOM_LIMIT");
   }
   const clientId = getClientId();
-  const store = createMessageStore(clientId);
+  const userId = await getCurrentUserId();
+  const store = createMessageStore(userId);
   const transport = createTransport("supabase");
   transport.on("message", (msg) => store.add(msg));
 
-  const firstJoinedAt = await ensureMembership(code);
+  const { firstJoinedAt, nickname: serverNick } = await ensureMembership(code);
+  const localNick = getRoomNickname(code);
+  if (localNick && !serverNick) {
+    // best-effort: 실패해도 다음 진입 시 재시도된다.
+    updateMembershipNickname(code, localNick).catch((e) => {
+      console.error("nickname backfill to server failed:", e);
+    });
+  } else if (serverNick && !localNick) {
+    const obj = readRoomNicks();
+    obj[code] = serverNick;
+    writeRoomNicks(obj);
+  }
+
   const history = await fetchMessages(code, firstJoinedAt);
   store.seed(history);
 
@@ -155,7 +172,10 @@ export function getSavedRooms() {
 
 // 서버(room_memberships)의 멤버십을 로컬 방 목록에 병합한다.
 // 새 기기/재설치 후 로그인하면 localStorage가 비어 로비가 빈다 → 서버에서 복원.
-// alias/방별 닉네임은 로컬 전용이라 복원되지 않고 코드만 채워진다.
+// alias는 로컬 전용(복원 안 됨). nickname은 0002 마이그레이션 이후 서버 영속화되므로
+// 로컬에 없을 때 서버 값으로 채운다 → 다른 기기에서 닉네임 입력 화면 재출현 방지.
+// 0002 이전부터 사용해 온 사용자는 서버 nickname이 NULL이므로, 본인 메시지의
+// sender_nickname을 폴백으로 복구한다(한 번이라도 메시지를 보낸 방에 한해).
 // MAX_SAVED_ROOMS 상한을 지키며, first_joined_at 최신순으로 우선 채운다.
 // 반환: 새로 추가된 방이 하나라도 있으면 true(호출 측에서 재렌더 판단용).
 export async function syncRoomsFromServer() {
@@ -166,16 +186,35 @@ export async function syncRoomsFromServer() {
   // 상한 초과 시 최근 입장한 방부터 복원되도록 정렬.
   memberships.sort((a, b) => (b.firstJoinedAt || 0) - (a.firstJoinedAt || 0));
   let added = false;
+  const localNicks = readRoomNicks();
+  let nicksChanged = false;
+  // 폴백 조회는 1회만(N+1 회피). 실패 시 빈 Map → 폴백 효과만 사라지고 본 흐름은 정상.
+  const fallbackNicks = await fetchMyLastNicknamesByRoom().catch(() => new Map());
   for (const m of memberships) {
     if (!isValid(m.code)) continue;
     const code = normalize(m.code);
+    // 닉네임 결정 우선순위: server.nickname > messages 폴백 (로컬 비어있을 때만 채움).
+    if (!localNicks[code]) {
+      const resolved = m.nickname || fallbackNicks.get(code) || null;
+      if (resolved) {
+        localNicks[code] = resolved;
+        nicksChanged = true;
+        // 폴백을 썼다면 서버 컬럼도 채워둔다 → 다른 기기/다음 sync 가 즉시 사용.
+        if (!m.nickname) {
+          updateMembershipNickname(code, resolved).catch((e) => {
+            console.error("nickname backfill from messages failed:", e);
+          });
+        }
+      }
+    }
     if (known.has(code)) continue;
-    if (list.length >= MAX_SAVED_ROOMS) break;
+    if (list.length >= MAX_SAVED_ROOMS) continue;
     list.push({ code, alias: "", lastUsedAt: m.firstJoinedAt || 0 });
     known.add(code);
     added = true;
   }
   if (added) writeSavedRooms(list);
+  if (nicksChanged) writeRoomNicks(localNicks);
   return added;
 }
 
