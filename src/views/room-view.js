@@ -116,11 +116,18 @@ export const roomView = {
     }
 
     // --- render messages ---
+    // 폰트 크기가 --computer-width(창 폭)에 비례하므로 리사이즈하면 메시지 줄바꿈/높이가
+    // 바뀌어 scrollTop이 그대로면 시각적으로 위로 미끄러져 보인다. 사용자가 바닥 근처에서
+    // 읽고 있었는지를 스크롤 이벤트로 유지하고, 메시지 갱신 + 컨테이너 리사이즈 양쪽에서 재고정.
+    let stickToBottom = true;
     function isNearBottom() {
       return list.scrollHeight - list.scrollTop - list.clientHeight < 40;
     }
+    const onScroll = () => {
+      stickToBottom = isNearBottom();
+    };
+    list.addEventListener("scroll", onScroll, { passive: true });
     const unsubStore = store.subscribe((messages) => {
-      const stick = isNearBottom();
       list.replaceChildren();
       for (const m of messages) {
         const who = el("span", { class: "msg-who", text: m.mine ? "you" : m.nickname });
@@ -128,8 +135,12 @@ export const roomView = {
         const time = el("span", { class: "msg-time", text: fmtTime(m.ts) });
         list.append(el("div", { class: "msg" + (m.mine ? " mine" : "") }, [who, text, time]));
       }
-      if (stick) list.scrollTop = list.scrollHeight;
+      if (stickToBottom) list.scrollTop = list.scrollHeight;
     });
+    const ro = new ResizeObserver(() => {
+      if (stickToBottom) list.scrollTop = list.scrollHeight;
+    });
+    ro.observe(list);
 
     // --- transport events ---
     const unsubStatus = transport.on("status", ({ state }) => {
@@ -181,6 +192,8 @@ export const roomView = {
       unsubStore();
       unsubStatus();
       unsubPres();
+      list.removeEventListener("scroll", onScroll);
+      ro.disconnect();
     };
   },
 
