@@ -28,3 +28,6 @@ dist-ssr
 
 # Local chat secrets (copy config.local.example.js -> config.local.js)
 src/config.local.js
+
+# Supabase CLI link state (local cache: project-ref, version metadata)
+supabase/.temp/

@@ -4,6 +4,7 @@
 import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
 import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom } from "../chat/session.js";
+import { getCurrentUserId } from "../auth/auth.js";
 
 const STATUS_TEXT = {
   connecting: "connecting…",
@@ -28,6 +29,9 @@ export const roomView = {
     const nickname = getRoomNickname(code);
     const clientId = getClientId();
     this._cancelled = false;
+    // await 직전에 _cancelled 초기화 → await 중 unmount가 true로 세팅하면 아래 가드에서 빠진다.
+    const userId = await getCurrentUserId();
+    if (this._cancelled) return;
 
     // 안전망: 닉네임 없이 직접 진입한 경우(라우터 직접 호출 등) nickname으로 우회.
     if (!nickname) {
@@ -145,7 +149,7 @@ export const roomView = {
     async function doSend() {
       const text = input.value.trim();
       if (!text) return;
-      const msg = { id: crypto.randomUUID(), clientId, nickname, text, ts: Date.now() };
+      const msg = { id: crypto.randomUUID(), clientId, senderUid: userId, nickname, text, ts: Date.now() };
       input.value = "";
       store.add(msg); // 낙관적 로컬 렌더
       try {
