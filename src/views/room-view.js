@@ -5,6 +5,7 @@ import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
 import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom } from "../chat/session.js";
 import { getCurrentUserId } from "../auth/auth.js";
+import { fetchMessages } from "../chat/message-history.js";
 
 const STATUS_TEXT = {
   connecting: "connecting…",
@@ -58,7 +59,7 @@ export const roomView = {
     }
     this._code = code;
     saveRoom(code);
-    const { transport, store } = entry;
+    const { transport, store, firstJoinedAt } = entry;
     store.start();
 
     // 본격 마운트 — 로딩 화면을 교체.
@@ -142,14 +143,45 @@ export const roomView = {
     });
     ro.observe(list);
 
+    // --- backfill: 재연결/visibility 복귀 시 그동안 놓친 메시지를 보충.
+    // realtime postgres_changes는 끊긴 동안의 INSERT를 catch-up 해주지 않으므로
+    // 마지막 수신 ts(없으면 firstJoinedAt) 이후의 메시지를 DB에서 다시 가져온다.
+    // store.add()의 id dedup이 중복 처리.
+    let backfilling = false;
+    async function backfill() {
+      if (backfilling) return;
+      backfilling = true;
+      try {
+        const cur = store.get();
+        const sinceTs = cur.length ? cur[cur.length - 1].ts : firstJoinedAt;
+        const fresh = await fetchMessages(code, sinceTs);
+        for (const m of fresh) store.add(m);
+      } catch (e) {
+        console.error("backfill failed:", e);
+      } finally {
+        backfilling = false;
+      }
+    }
+
     // --- transport events ---
+    // 첫 connected는 openRoom의 seed가 이미 처리했으므로 backfill 생략. 이후 재진입(재연결)에서만 호출.
+    let hadConnectedOnce = false;
     const unsubStatus = transport.on("status", ({ state }) => {
       connState = state;
       const ok = state === "connected";
       sendBtn.disabled = !ok;
       input.disabled = !ok;
       renderStatus();
+      if (ok) {
+        if (hadConnectedOnce) backfill();
+        hadConnectedOnce = true;
+      }
     });
+    // realtime 채널이 자신의 죽음을 모르는 경우 보강: 탭/창이 다시 보이게 되면 즉시 갭필.
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") backfill();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     const unsubPres = transport.on("presence", ({ count }) => {
       onlineCount = count;
       renderStatus();
@@ -194,6 +226,7 @@ export const roomView = {
       unsubPres();
       list.removeEventListener("scroll", onScroll);
       ro.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   },
 
