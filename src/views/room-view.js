@@ -117,31 +117,70 @@ export const roomView = {
     }
 
     // --- render messages ---
-    // 폰트 크기가 --computer-width(창 폭)에 비례하므로 리사이즈하면 메시지 줄바꿈/높이가
-    // 바뀌어 scrollTop이 그대로면 시각적으로 위로 미끄러져 보인다. 사용자가 바닥 근처에서
-    // 읽고 있었는지를 스크롤 이벤트로 유지하고, 메시지 갱신 + 컨테이너 리사이즈 양쪽에서 재고정.
+    // 폰트 크기가 --computer-width(창 폭)에 비례하므로 리사이즈하면 메시지 높이가 변한다.
+    // scrollTop을 그대로 두면 같은 픽셀 오프셋이 다른 메시지를 보여주게 되어 시각적으로
+    // 위/아래로 미끄러져 보인다. 두 모드로 보정:
+    //   - 바닥 근처(stickToBottom): 새 메시지 도착/리사이즈 시 바닥에 재고정
+    //   - 그 외: viewport 최상단에 걸친 메시지 id를 anchor로 기록 → 재렌더/리사이즈 후
+    //           그 메시지의 viewport 내 동일 상대 위치(offset)로 scrollTop을 보정
+    // ※ 좌표 계산은 getBoundingClientRect로 한다. offsetTop은 offsetParent(.room) 기준이라
+    //   .room-list의 scroll 좌표계와 어긋나서 부정확하다.
+    const NEAR_BOTTOM_PX = 40;
     let stickToBottom = true;
-    function isNearBottom() {
-      return list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    let anchorId = null;
+    let anchorOffset = 0; // viewport-top 기준 anchor의 상대 y(px)
+    function captureAnchor() {
+      const distFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+      stickToBottom = distFromBottom < NEAR_BOTTOM_PX;
+      if (stickToBottom) {
+        anchorId = null;
+        return;
+      }
+      const listTop = list.getBoundingClientRect().top;
+      for (const row of list.children) {
+        const rect = row.getBoundingClientRect();
+        if (rect.bottom > listTop + 1) {
+          anchorId = row.dataset.id || null;
+          anchorOffset = rect.top - listTop;
+          return;
+        }
+      }
+      anchorId = null;
     }
-    const onScroll = () => {
-      stickToBottom = isNearBottom();
-    };
-    list.addEventListener("scroll", onScroll, { passive: true });
+    function restoreScroll() {
+      if (stickToBottom) {
+        list.scrollTop = list.scrollHeight;
+        return;
+      }
+      if (!anchorId) return;
+      for (const row of list.children) {
+        if (row.dataset.id === anchorId) {
+          const listTop = list.getBoundingClientRect().top;
+          const rowTop = row.getBoundingClientRect().top;
+          list.scrollTop += rowTop - listTop - anchorOffset;
+          return;
+        }
+      }
+    }
+    list.addEventListener("scroll", captureAnchor, { passive: true });
     const unsubStore = store.subscribe((messages) => {
       list.replaceChildren();
       for (const m of messages) {
         const who = el("span", { class: "msg-who", text: m.mine ? "you" : m.nickname });
         const text = el("span", { class: "msg-text", text: m.text });
         const time = el("span", { class: "msg-time", text: fmtTime(m.ts) });
-        list.append(el("div", { class: "msg" + (m.mine ? " mine" : "") }, [who, text, time]));
+        list.append(
+          el("div", { class: "msg" + (m.mine ? " mine" : ""), dataset: { id: m.id } }, [who, text, time]),
+        );
       }
-      if (stickToBottom) list.scrollTop = list.scrollHeight;
+      restoreScroll();
     });
-    const ro = new ResizeObserver(() => {
-      if (stickToBottom) list.scrollTop = list.scrollHeight;
-    });
+    const ro = new ResizeObserver(restoreScroll);
     ro.observe(list);
+    // ResizeObserver 백업: Tauri 그립 드래그 시 .room-list 박스 변동이 한 박자 늦거나
+    // 누락되는 경우를 대비해 window resize에도 보정한다.
+    const onWindowResize = () => restoreScroll();
+    window.addEventListener("resize", onWindowResize);
 
     // --- backfill: 재연결/visibility 복귀 시 그동안 놓친 메시지를 보충.
     // realtime postgres_changes는 끊긴 동안의 INSERT를 catch-up 해주지 않으므로
@@ -224,8 +263,9 @@ export const roomView = {
       unsubStore();
       unsubStatus();
       unsubPres();
-      list.removeEventListener("scroll", onScroll);
+      list.removeEventListener("scroll", captureAnchor);
       ro.disconnect();
+      window.removeEventListener("resize", onWindowResize);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   },
