@@ -5,6 +5,8 @@ import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
 import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom } from "../chat/session.js";
 import { getCurrentUserId } from "../auth/auth.js";
+import { fetchMessages } from "../chat/message-history.js";
+import { createBackfiller } from "../chat/backfill.js";
 
 const STATUS_TEXT = {
   connecting: "connecting…",
@@ -58,7 +60,7 @@ export const roomView = {
     }
     this._code = code;
     saveRoom(code);
-    const { transport, store } = entry;
+    const { transport, store, firstJoinedAt } = entry;
     store.start();
 
     // 본격 마운트 — 로딩 화면을 교체.
@@ -116,29 +118,93 @@ export const roomView = {
     }
 
     // --- render messages ---
-    function isNearBottom() {
-      return list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    // 폰트 크기가 --computer-width(창 폭)에 비례하므로 리사이즈하면 메시지 높이가 변한다.
+    // scrollTop을 그대로 두면 같은 픽셀 오프셋이 다른 메시지를 보여주게 되어 시각적으로
+    // 위/아래로 미끄러져 보인다. 두 모드로 보정:
+    //   - 바닥 근처(stickToBottom): 새 메시지 도착/리사이즈 시 바닥에 재고정
+    //   - 그 외: viewport 최상단에 걸친 메시지 id를 anchor로 기록 → 재렌더/리사이즈 후
+    //           그 메시지의 viewport 내 동일 상대 위치(offset)로 scrollTop을 보정
+    // ※ 좌표 계산은 getBoundingClientRect로 한다. offsetTop은 offsetParent(.room) 기준이라
+    //   .room-list의 scroll 좌표계와 어긋나서 부정확하다.
+    const NEAR_BOTTOM_PX = 40;
+    let stickToBottom = true;
+    let anchorId = null;
+    let anchorOffset = 0; // viewport-top 기준 anchor의 상대 y(px)
+    function captureAnchor() {
+      const distFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+      stickToBottom = distFromBottom < NEAR_BOTTOM_PX;
+      if (stickToBottom) {
+        anchorId = null;
+        return;
+      }
+      const listTop = list.getBoundingClientRect().top;
+      for (const row of list.children) {
+        const rect = row.getBoundingClientRect();
+        if (rect.bottom > listTop + 1) {
+          anchorId = row.dataset.id || null;
+          anchorOffset = rect.top - listTop;
+          return;
+        }
+      }
+      anchorId = null;
     }
+    function restoreScroll() {
+      if (stickToBottom) {
+        list.scrollTop = list.scrollHeight;
+        return;
+      }
+      if (!anchorId) return;
+      for (const row of list.children) {
+        if (row.dataset.id === anchorId) {
+          const listTop = list.getBoundingClientRect().top;
+          const rowTop = row.getBoundingClientRect().top;
+          list.scrollTop += rowTop - listTop - anchorOffset;
+          return;
+        }
+      }
+    }
+    list.addEventListener("scroll", captureAnchor, { passive: true });
     const unsubStore = store.subscribe((messages) => {
-      const stick = isNearBottom();
       list.replaceChildren();
       for (const m of messages) {
         const who = el("span", { class: "msg-who", text: m.mine ? "you" : m.nickname });
         const text = el("span", { class: "msg-text", text: m.text });
         const time = el("span", { class: "msg-time", text: fmtTime(m.ts) });
-        list.append(el("div", { class: "msg" + (m.mine ? " mine" : "") }, [who, text, time]));
+        list.append(
+          el("div", { class: "msg" + (m.mine ? " mine" : ""), dataset: { id: m.id } }, [who, text, time]),
+        );
       }
-      if (stick) list.scrollTop = list.scrollHeight;
+      restoreScroll();
     });
+    const ro = new ResizeObserver(restoreScroll);
+    ro.observe(list);
+    // ResizeObserver 백업: Tauri 그립 드래그 시 .room-list 박스 변동이 한 박자 늦거나
+    // 누락되는 경우를 대비해 window resize에도 보정한다.
+    const onWindowResize = () => restoreScroll();
+    window.addEventListener("resize", onWindowResize);
+
+    // backfill: 재연결/visibility 복귀 시 그동안 놓친 메시지를 보충 (자세한 동작은 backfill.js 참조).
+    const backfill = createBackfiller({ store, fetchMessages, firstJoinedAt, code });
 
     // --- transport events ---
+    // 첫 connected는 openRoom의 seed가 이미 처리했으므로 backfill 생략. 이후 재진입(재연결)에서만 호출.
+    let hadConnectedOnce = false;
     const unsubStatus = transport.on("status", ({ state }) => {
       connState = state;
       const ok = state === "connected";
       sendBtn.disabled = !ok;
       input.disabled = !ok;
       renderStatus();
+      if (ok) {
+        if (hadConnectedOnce) backfill();
+        hadConnectedOnce = true;
+      }
     });
+    // realtime 채널이 자신의 죽음을 모르는 경우 보강: 탭/창이 다시 보이게 되면 즉시 갭필.
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") backfill();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     const unsubPres = transport.on("presence", ({ count }) => {
       onlineCount = count;
       renderStatus();
@@ -181,6 +247,10 @@ export const roomView = {
       unsubStore();
       unsubStatus();
       unsubPres();
+      list.removeEventListener("scroll", captureAnchor);
+      ro.disconnect();
+      window.removeEventListener("resize", onWindowResize);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   },
 

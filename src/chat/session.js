@@ -118,7 +118,8 @@ export async function openRoom(rawCode) {
   const history = await fetchMessages(code, firstJoinedAt);
   store.seed(history);
 
-  const entry = { code, clientId, transport, store };
+  // firstJoinedAt은 재연결/visibility 복귀 시 갭필(fetchMessages) 의 fallback sinceTs로 사용.
+  const entry = { code, clientId, transport, store, firstJoinedAt };
   rooms.set(code, entry);
   return entry;
 }
