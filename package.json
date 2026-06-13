@@ -4,7 +4,8 @@
   "version": "0.1.1",
   "type": "module",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "node --test src/chat/backfill.test.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
