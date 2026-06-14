@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "test": "node --test src/chat/backfill.test.js"
+    "test": "node --test src/chat/backfill.test.js src/chat/message-store.test.js src/chat/change-nickname.test.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
