@@ -42,7 +42,8 @@ export const nicknameView = {
 
     okBtn.addEventListener("click", submit);
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      // IME composition 중 Enter 는 commit 키 → 무시 (한글/일본어/중국어 입력 시 마지막 글자 중복 방지).
+      if (e.key === "Enter" && !e.isComposing) {
         e.preventDefault();
         submit();
       }

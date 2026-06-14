@@ -152,7 +152,9 @@ export const roomView = {
 
       input.addEventListener("keydown", (e) => {
         playKey();
-        if (e.key === "Enter") {
+        // IME composition 중 Enter(Chromium 계열 webview 에서 keydown 발화)는 IME 의 commit
+        // 키이므로 무시. 한글/일본어/중국어 입력 시 마지막 글자가 두 번 전송되는 버그 방지.
+        if (e.key === "Enter" && !e.isComposing) {
           e.preventDefault();
           commit();
         } else if (e.key === "Escape") {
@@ -325,7 +327,10 @@ export const roomView = {
     sendBtn.addEventListener("click", doSend);
     input.addEventListener("keydown", (e) => {
       playKey(); // 레트로 일관성: 채팅 입력도 키사운드 재생
-      if (e.key === "Enter") {
+      // IME composition 중 Enter 는 commit 키 → 무시. Chromium webview(WebView2/Chrome)에서
+      // 한글 마지막 글자가 두 번 전송되는 버그 방지. WebKit(Safari/macOS WKWebView)에서는
+      // 어차피 composing 중 keydown 이 안 와 변화 없음.
+      if (e.key === "Enter" && !e.isComposing) {
         e.preventDefault();
         doSend();
       }
