@@ -2,7 +2,7 @@
 // 메시지 영속화는 Postgres가 담당하므로 여기서는 단순 보관/생명주기만 다룬다.
 import { createTransport } from "./transport.js";
 import { createMessageStore } from "./message-store.js";
-import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships, updateMembershipNickname, fetchMyLastNicknamesByRoom } from "./message-history.js";
+import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships, updateMembershipNickname, fetchMyLastNicknamesByRoom, fetchRoomMembers } from "./message-history.js";
 import { normalize, isValid } from "./room-code.js";
 import { getCurrentUserId } from "../auth/auth.js";
 
@@ -89,7 +89,12 @@ const rooms = new Map(); // code -> { code, clientId, transport, store }
 // 멤버십이 없으면 first_joined_at=now 로 생성 → 이후 그 시점부터의 메시지만 보인다.
 // 로컬↔서버 방별 닉네임 양방향 동기화도 여기서 수행:
 //  - 로컬 O, 서버 NULL → 서버로 push (기존 사용자 첫 진입 시 backfill)
-//  - 서버 O, 로컬 X → 로컬에 채움 (다른 기기 첫 진입 시)
+//  - 로컬 X, 서버 O → 로컬에 채움 (다른 기기 첫 진입 시)
+//  - 로컬 O, 서버 O, 다름 → 서버 우선: 로컬을 서버 값으로 덮어쓰기.
+//      Why: 다른 기기에서 변경된 닉네임이 우선 반영되어야 함. 오프라인 변경은 다음 sync 에서
+//      손실 가능 — 정상 거동(스펙: LWW 비용 대비 효용 낮아 보류).
+// 또한 방의 모든 멤버 (user_id → nickname) 맵을 fetchRoomMembers 로 가져와 store 에 주입 →
+// 메시지 표시가 라이브 lookup 기반이 된다(닉네임 변경 즉시 과거 메시지도 새 이름).
 export async function openRoom(rawCode) {
   const code = normalize(rawCode);
   if (rooms.has(code)) return rooms.get(code);
@@ -113,16 +118,76 @@ export async function openRoom(rawCode) {
     const obj = readRoomNicks();
     obj[code] = serverNick;
     writeRoomNicks(obj);
+  } else if (serverNick && localNick && serverNick !== localNick) {
+    // 서버 우선: 다른 기기에서 변경된 값으로 로컬을 덮어쓴다.
+    const obj = readRoomNicks();
+    obj[code] = serverNick;
+    writeRoomNicks(obj);
   }
+
+  // 방의 모든 멤버 nicknameMap 구성. 실패해도 본 흐름은 정상 — snapshot 폴백이 받쳐준다.
+  const nicknameMap = await fetchRoomMembers(code).catch((e) => {
+    console.error("fetchRoomMembers failed:", e);
+    return new Map();
+  });
+  store.setNicknameMap(nicknameMap);
 
   const history = await fetchMessages(code, firstJoinedAt);
   store.seed(history);
 
   // firstJoinedAt은 재연결/visibility 복귀 시 갭필(fetchMessages) 의 fallback sinceTs로 사용.
-  const entry = { code, clientId, transport, store, firstJoinedAt };
+  // userId 는 changeRoomNickname 에서 nicknameMap 자기 엔트리 갱신용.
+  const entry = { code, clientId, transport, store, firstJoinedAt, userId };
   rooms.set(code, entry);
   return entry;
 }
+
+// 활성 방의 닉네임을 즉시 변경. 로컬 + 서버 + 활성 store 의 nicknameMap +
+// transport.track(presence) 까지 한꺼번에 갱신해서 본인 화면에 즉시 반영.
+// 거절: 빈 값 또는 16자 초과 → throw INVALID_NICK. 활성 방 아니면 throw NOT_OPEN.
+// 같은 값이면 no-op 으로 통과(불필요한 서버 호출/이벤트 emit 방지).
+// 다른 기기 실시간 반영은 별도 issue (postgres_changes UPDATE 구독) — 본 함수는 본인 기기 한정.
+//
+// 의존성 주입 factory 로 표현 → 테스트에서 fake rooms/storage/server 로 동작 검증 가능.
+// 기본 export 인 changeRoomNickname 은 실제 모듈 상태(rooms 등) 로 빌드한 인스턴스.
+export function makeChangeRoomNickname({
+  rooms,
+  getRoomNickname,
+  setRoomNickname,
+  updateMembershipNickname,
+}) {
+  return async function changeRoomNickname(rawCode, newNick) {
+    if (!isValid(rawCode)) throw new Error("INVALID_CODE");
+    const code = normalize(rawCode);
+    const trimmed = String(newNick || "").trim();
+    if (!trimmed || trimmed.length > NICK_MAX) throw new Error("INVALID_NICK");
+    const entry = rooms.get(code);
+    if (!entry) throw new Error("NOT_OPEN");
+    const current = getRoomNickname(code);
+    if (current === trimmed) return;
+
+    // 1. 로컬 영속화 (실패하면 사용자가 다시 시도 — 서버 호출 전이라 안전).
+    setRoomNickname(code, trimmed);
+    // 2. store 라이브 lookup 즉시 갱신 → 본인 화면의 과거 메시지 표시 이름 변경.
+    entry.store.updateNickname(entry.userId, trimmed);
+    // 3. presence track 재호출 → 다른 멤버의 온라인 사용자 표시(향후 nickname 사용 시) 갱신.
+    entry.transport.track({ nickname: trimmed });
+    // 4. 서버 영속화. 실패해도 로컬은 이미 갱신 — 다음 openRoom 의 양방향 sync 가 복구한다.
+    try {
+      await updateMembershipNickname(code, trimmed);
+    } catch (e) {
+      console.error("updateMembershipNickname failed:", e);
+      throw e;
+    }
+  };
+}
+
+export const changeRoomNickname = makeChangeRoomNickname({
+  rooms,
+  getRoomNickname,
+  setRoomNickname,
+  updateMembershipNickname,
+});
 
 export function closeRoom(rawCode) {
   const code = normalize(rawCode);

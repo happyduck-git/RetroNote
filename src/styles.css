@@ -361,6 +361,46 @@ body {
   font-size: calc(var(--computer-width) / 50);
 }
 
+/* 본인 닉네임 라벨 + [✎]. as:alice [✎] 묶음. */
+.room-nick-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2em;
+  font-size: calc(var(--computer-width) / 50);
+  opacity: 0.85;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.room-nick-as {
+  opacity: 0.55;
+}
+
+.room-nick {
+  max-width: 7em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-nick-edit {
+  position: static;
+  font-size: calc(var(--computer-width) / 56);
+  padding: 0 0.2em;
+}
+
+.room-nick-input {
+  font-size: calc(var(--computer-width) / 50);
+  width: 5em;
+  min-width: 3em;
+  padding: 0 0.2em;
+}
+
+.room-nick-input.invalid {
+  animation: shake 0.4s ease-in-out;
+  border-bottom-color: #ff5a5a;
+}
+
 .room-status {
   margin-left: auto;
   opacity: 0.8;

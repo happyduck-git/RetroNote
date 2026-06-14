@@ -5,6 +5,7 @@
 //   connect(roomCode, { nickname, clientId }) -> Promise   // 구독 준비 완료 시 resolve
 //   send(message) -> Promise                                // message = envelope, DB INSERT
 //   leave() -> Promise                                      // unsubscribe + close, idempotent
+//   track(payload) -> void                                  // presence payload 갱신(닉네임 변경 등)
 //   on(event, handler) -> unsubscribe()
 //     "message"(msg)             — 새 메시지 도착(자기 자신의 INSERT echo 포함)
 //     "status"({ state })        — "connecting"|"connected"|"reconnecting"|"closed"|"error"

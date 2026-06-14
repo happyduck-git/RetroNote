@@ -3,10 +3,12 @@
 // 송신은 transport.send (DB INSERT) → echo로 자기 자신에게도 돌아오지만 store의 id dedup이 처리.
 import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
-import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom } from "../chat/session.js";
+import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom, changeRoomNickname } from "../chat/session.js";
 import { getCurrentUserId } from "../auth/auth.js";
 import { fetchMessages } from "../chat/message-history.js";
 import { createBackfiller } from "../chat/backfill.js";
+
+const NICK_MAX = 16;
 
 const STATUS_TEXT = {
   connecting: "connecting…",
@@ -78,6 +80,96 @@ export const roomView = {
         console.error("copy failed:", e);
       }
     });
+
+    // 본인 닉네임 라벨 + [✎] 인라인 에디터. alias 편집과 동일한 commit/cancel 패턴.
+    // 현재 닉네임은 라이브로 다시 읽어 표시 — changeRoomNickname 직후 setRoomNickname 갱신본이 반영됨.
+    const nickLabel = el("span", { class: "room-nick", text: nickname });
+    const nickAs = el("span", { class: "room-nick-as", text: "as:" });
+    const nickEditBtn = el("button", {
+      class: "btn room-nick-edit",
+      title: "Edit nickname",
+      text: "[✎]",
+    });
+    const nickWrap = el("span", { class: "room-nick-wrap" }, [nickAs, nickLabel, nickEditBtn]);
+
+    nickEditBtn.addEventListener("click", () => {
+      playKey();
+      startNickEdit();
+    });
+
+    function startNickEdit() {
+      if (!nickLabel.isConnected) return;
+      const currentNick = getRoomNickname(code) || nickLabel.textContent;
+      const input = el("input", {
+        class: "field room-nick-input",
+        type: "text",
+        maxlength: String(NICK_MAX),
+        value: currentNick,
+        placeholder: "nickname",
+        spellcheck: "false",
+        autocomplete: "off",
+        dataset: { noDrag: "" },
+      });
+      let done = false;
+      const finish = (next) => {
+        if (done) return;
+        done = true;
+        // 현재 활성 닉네임을 다시 읽어 표시 — commit 성공 시는 새 값, cancel 또는 실패면 기존 값.
+        nickLabel.textContent = next;
+        input.replaceWith(nickLabel);
+      };
+      const commit = async () => {
+        const v = input.value.trim();
+        const currentLive = getRoomNickname(code);
+        if (!v) {
+          // 빈 값 거절: shake + 포커스 유지(취소가 아님).
+          input.classList.add("invalid");
+          input.focus();
+          input.select();
+          setTimeout(() => input.classList.remove("invalid"), 400);
+          return;
+        }
+        if (v.length > NICK_MAX) {
+          // maxlength 가 막아주지만 안전망.
+          input.classList.add("invalid");
+          setTimeout(() => input.classList.remove("invalid"), 400);
+          return;
+        }
+        if (v === currentLive) {
+          finish(currentLive);
+          return;
+        }
+        try {
+          await changeRoomNickname(code, v);
+          finish(v);
+        } catch (e) {
+          console.error("changeRoomNickname failed:", e);
+          // 실패 시 기존 표시값 유지.
+          finish(currentLive || currentNick);
+        }
+      };
+      const cancel = () => finish(getRoomNickname(code) || currentNick);
+
+      input.addEventListener("keydown", (e) => {
+        playKey();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancel();
+        }
+      });
+      input.addEventListener("blur", () => {
+        // blur 는 commit 으로 처리 — alias 편집과 동일 패턴. 실패하면 finish 가 기존 값 복원.
+        commit();
+      });
+
+      nickLabel.replaceWith(input);
+      input.focus();
+      input.select();
+    }
+
     const status = el("span", { class: "room-status", text: STATUS_TEXT.connecting });
     const leaveBtn = el("button", {
       class: "btn room-leave",
@@ -85,7 +177,7 @@ export const roomView = {
       text: "[X]",
       onClick: () => ctx.navigate("lobby"),
     });
-    const header = el("div", { class: "room-header" }, [codeLabel, copyBtn, status, leaveBtn]);
+    const header = el("div", { class: "room-header" }, [codeLabel, copyBtn, nickWrap, status, leaveBtn]);
 
     // --- message list ---
     const list = el("div", { class: "room-list", dataset: { noDrag: "" } });
@@ -167,7 +259,9 @@ export const roomView = {
     const unsubStore = store.subscribe((messages) => {
       list.replaceChildren();
       for (const m of messages) {
-        const who = el("span", { class: "msg-who", text: m.mine ? "you" : m.nickname });
+        // displayName: nicknameMap(라이브 현재 이름) > sender_nickname snapshot(떠난 멤버 폴백).
+        // 본인은 항상 "you" — 닉네임 변경 후에도 본인에게는 시각적 변화 없음.
+        const who = el("span", { class: "msg-who", text: m.mine ? "you" : (m.displayName || m.nickname) });
         const text = el("span", { class: "msg-text", text: m.text });
         const time = el("span", { class: "msg-time", text: fmtTime(m.ts) });
         list.append(
@@ -215,7 +309,10 @@ export const roomView = {
     async function doSend() {
       const text = input.value.trim();
       if (!text) return;
-      const msg = { id: crypto.randomUUID(), clientId, senderUid: userId, nickname, text, ts: Date.now() };
+      // send 시점에 라이브로 다시 읽는다 — [✎]로 닉네임을 바꾼 직후 보낸 메시지는
+      // 새 이름으로 박제되어야 한다(snapshot fallback 도 새 이름으로 남음).
+      const liveNick = getRoomNickname(code) || nickname;
+      const msg = { id: crypto.randomUUID(), clientId, senderUid: userId, nickname: liveNick, text, ts: Date.now() };
       input.value = "";
       store.add(msg); // 낙관적 로컬 렌더
       try {

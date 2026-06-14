@@ -81,5 +81,16 @@ export function createSupabaseTransport() {
     currentCode = null;
   }
 
-  return { connect, send, leave, on };
+  // presence payload 갱신. 닉네임 변경 시 호출 → 다른 멤버의 presence sync 가
+  // 새 nickname 으로 즉시 갱신된다. 채널 미연결 상태에서는 no-op.
+  function track(payload) {
+    if (!channel) return;
+    try {
+      channel.track(payload);
+    } catch (e) {
+      console.error("track failed:", e);
+    }
+  }
+
+  return { connect, send, leave, on, track };
 }

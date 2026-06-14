@@ -4,6 +4,15 @@
 import { getClient } from "../auth/auth.js";
 import { normalize } from "./room-code.js";
 
+// 0003 이후 room_memberships SELECT 정책이 둘이다:
+//   - own memberships rw   → user_id = auth.uid()
+//   - memberships visible to co-members → 같은 방의 어떤 멤버든 보임
+// 두 정책은 OR 로 결합되므로, 본인 row 만 원하는 select 는 .eq("user_id", uid) 로 명시해야 한다.
+async function currentUid(client) {
+  const { data } = await client.auth.getSession();
+  return data?.session?.user?.id || null;
+}
+
 function rowToMsg(row) {
   return {
     id: row.id,
@@ -20,10 +29,12 @@ function rowToMsg(row) {
 // 반환에 nickname 포함 → 호출 측에서 로컬↔서버 닉네임 동기화에 사용.
 export async function ensureMembership(code) {
   const client = await getClient();
+  const uid = await currentUid(client);
   const { data: existing, error: e1 } = await client
     .from("room_memberships")
     .select("first_joined_at, nickname")
     .eq("room_code", code)
+    .eq("user_id", uid)
     .maybeSingle();
   if (e1) throw e1;
   if (existing) return {
@@ -42,6 +53,7 @@ export async function ensureMembership(code) {
     .from("room_memberships")
     .select("first_joined_at, nickname")
     .eq("room_code", code)
+    .eq("user_id", uid)
     .single();
   if (e2) throw e2;
   return {
@@ -50,13 +62,35 @@ export async function ensureMembership(code) {
   };
 }
 
-// 현재 사용자의 모든 방 멤버십 조회. RLS가 user_id=auth.uid() 로 자동 한정하므로
-// 본인이 입장했던 방들만 반환된다. 새 기기/재설치 후 로비 목록 복원에 사용.
-export async function fetchMemberships() {
+// 특정 방의 모든 멤버 (user_id, nickname) 조회.
+// 0003 마이그레이션의 "memberships visible to co-members" 정책 덕에 본인이 멤버인 방에 한해
+// 같은 방 멤버들의 row 가 보인다. 반환: Map<user_id, nickname>.
+// nickname 이 NULL 인 row(아직 backfill 안 된 사용자)는 제외 — 호출 측은 message.sender_nickname
+// snapshot 폴백을 사용하므로 누락돼도 표시가 깨지지 않는다.
+export async function fetchRoomMembers(code) {
   const client = await getClient();
   const { data, error } = await client
     .from("room_memberships")
-    .select("room_code, first_joined_at, nickname");
+    .select("user_id, nickname")
+    .eq("room_code", code);
+  if (error) throw error;
+  const out = new Map();
+  for (const r of data) {
+    if (r.user_id && r.nickname) out.set(r.user_id, r.nickname);
+  }
+  return out;
+}
+
+// 현재 사용자의 모든 방 멤버십 조회. 본인 row 만 필요 — 새 기기/재설치 후 로비 목록 복원에 사용.
+// 0003 이후 co-member 정책으로 다른 사용자 row 도 보일 수 있어 .eq("user_id", uid) 명시 필요.
+export async function fetchMemberships() {
+  const client = await getClient();
+  const uid = await currentUid(client);
+  if (!uid) return [];
+  const { data, error } = await client
+    .from("room_memberships")
+    .select("room_code, first_joined_at, nickname")
+    .eq("user_id", uid);
   if (error) throw error;
   return data.map((r) => ({
     code: r.room_code,
