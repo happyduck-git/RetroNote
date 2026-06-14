@@ -54,7 +54,7 @@ export const resetView = {
       otpInput.hidden = false;
       newPwInput.hidden = false;
       resetBtn.hidden = false;
-      msg.style.color = ""; // 기본 에러색 복원
+      msg.classList.remove("success"); // 기본 에러색 복원
       otpInput.focus();
     }
 
@@ -68,11 +68,11 @@ export const resetView = {
       sendBtn.disabled = true;
       try {
         await requestPasswordReset(email);
-        msg.style.color = "#7fff7f"; // 성공 안내는 초록 톤
+        msg.classList.add("success"); // 성공 안내는 초록 톤
         msg.textContent = "code sent — check your email";
         showStep2();
       } catch (e) {
-        msg.style.color = "";
+        msg.classList.remove("success");
         msg.textContent = e?.message || "request failed";
         console.error("reset request failed:", e);
       } finally {
@@ -85,11 +85,11 @@ export const resetView = {
       const otp = otpInput.value.trim();
       const newPw = newPwInput.value;
       if (!email || !otp || !newPw) {
-        msg.style.color = "";
+        msg.classList.remove("success");
         msg.textContent = "all fields required";
         return;
       }
-      msg.style.color = "";
+      msg.classList.remove("success");
       msg.textContent = "";
       resetBtn.disabled = true;
       try {

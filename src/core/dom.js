@@ -17,3 +17,17 @@ export function el(tag, props = {}, children = []) {
   }
   return node;
 }
+
+export function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+export function onEnter(el, fn) {
+  el.addEventListener("keydown", (e) => {
+    // IME composition 중 Enter 는 commit 키 → 무시 (한글/일본어/중국어 입력 시 마지막 글자 중복 방지).
+    if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      fn(e);
+    }
+  });
+}

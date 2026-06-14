@@ -283,6 +283,10 @@ body {
   min-height: 1.1em;
 }
 
+.form-error.success {
+  color: #7fff7f;
+}
+
 /* ----- 홈 메뉴 ----- */
 .menu {
   align-items: center;
@@ -454,6 +458,19 @@ body {
   opacity: 0.4;
   font-size: 0.8em;
   flex: 0 0 auto;
+}
+
+/* 송신 실패한 낙관적 메시지: 텍스트는 에러 톤(#ff5a5a)으로 표시하고
+   시간 옆에 ⚠ 아이콘을 붙여 즉시 인지 가능하게 한다. title="send failed" 는 hover 보강. */
+.msg.failed {
+  opacity: 0.6;
+}
+.msg.failed .msg-text {
+  color: #ff5a5a;
+}
+.msg.failed .msg-time::after {
+  content: " ⚠";
+  margin-left: 0.2em;
 }
 
 .room-input-row {

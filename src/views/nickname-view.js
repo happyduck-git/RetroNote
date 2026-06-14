@@ -1,7 +1,7 @@
 // 방별 닉네임 입력 화면. 로비에서 방 입장 직전(첫 입장 시) 이 화면이 끼어든다.
 // params.code 가 필요하다 — 없으면 로비로 돌려보낸다.
 // 저장 후 해당 방으로 이동.
-import { el } from "../core/dom.js";
+import { el, onEnter } from "../core/dom.js";
 import { getNickname, getRoomNickname, setRoomNickname } from "../chat/session.js";
 
 export const nicknameView = {
@@ -41,13 +41,7 @@ export const nicknameView = {
     }
 
     okBtn.addEventListener("click", submit);
-    input.addEventListener("keydown", (e) => {
-      // IME composition 중 Enter 는 commit 키 → 무시 (한글/일본어/중국어 입력 시 마지막 글자 중복 방지).
-      if (e.key === "Enter" && !e.isComposing) {
-        e.preventDefault();
-        submit();
-      }
-    });
+    onEnter(input, submit);
 
     screenEl.append(el("div", { class: "form" }, [label, input, okBtn, err]));
     setTimeout(() => {

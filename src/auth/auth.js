@@ -43,7 +43,8 @@ export async function signOut() {
 
 export async function getSession() {
   const client = await getClient();
-  const { data } = await client.auth.getSession();
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
   return data?.session || null;
 }
 

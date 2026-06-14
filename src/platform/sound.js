@@ -39,10 +39,6 @@ export function playKey() {
   src.start(0);
 }
 
-export function isSoundMuted() {
-  return isMuted;
-}
-
 export function initSound() {
   loadBuffer();
   const muteBtn = document.getElementById("mute-btn");
