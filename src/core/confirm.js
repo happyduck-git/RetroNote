@@ -3,10 +3,16 @@
 // Promise<boolean> 반환: OK=true, CANCEL/Esc/배경 클릭=false.
 import { el } from "./dom.js";
 
-export function confirmDialog(message, { okLabel = "OK", cancelLabel = "CANCEL" } = {}) {
+// 단순 정보성 알림. native alert()가 Tauri macOS webview에서 비신뢰 동작이라 우회.
+export function alertDialog(message, { okLabel = "OK", host } = {}) {
+  return confirmDialog(message, { okLabel, cancelLabel: null, host });
+}
+
+export function confirmDialog(message, { okLabel = "OK", cancelLabel = "CANCEL", host } = {}) {
   return new Promise((resolve) => {
-    // 뷰와 동일하게 화면(.screen) 영역 위에 올린다. 없으면 body로 폴백.
-    const host = document.getElementById("screen") || document.body;
+    // 호출 측이 host 를 명시하면 그 위에 올린다(테스트/하위 컨테이너 한정용).
+    // 미지정 시 뷰와 동일하게 화면(.screen) 영역 위에 올린다. 없으면 body로 폴백.
+    const hostEl = host || document.getElementById("screen") || document.body;
 
     let done = false;
     function close(result) {
@@ -41,16 +47,18 @@ export function confirmDialog(message, { okLabel = "OK", cancelLabel = "CANCEL" 
       text: `[ ${okLabel} ]`,
       onClick: () => close(true),
     });
-    const cancelBtn = el("button", {
-      class: "btn modal-btn modal-cancel",
-      text: `[ ${cancelLabel} ]`,
-      onClick: () => close(false),
-    });
+    const actions = el("div", { class: "modal-actions" });
+    if (cancelLabel) {
+      const cancelBtn = el("button", {
+        class: "btn modal-btn modal-cancel",
+        text: `[ ${cancelLabel} ]`,
+        onClick: () => close(false),
+      });
+      actions.append(cancelBtn);
+    }
+    actions.append(okBtn);
 
-    const box = el("div", { class: "modal-box" }, [
-      msgEl,
-      el("div", { class: "modal-actions" }, [cancelBtn, okBtn]),
-    ]);
+    const box = el("div", { class: "modal-box" }, [msgEl, actions]);
     // 박스 내부 클릭이 배경(취소)으로 전파되지 않도록.
     box.addEventListener("click", (e) => e.stopPropagation());
 
@@ -66,7 +74,7 @@ export function confirmDialog(message, { okLabel = "OK", cancelLabel = "CANCEL" 
 
     // 캡처 단계로 등록해 다른 뷰의 keydown 리스너(예: 로비 입력의 Enter)보다 먼저 가로챈다.
     document.addEventListener("keydown", onKey, true);
-    host.append(overlay);
+    hostEl.append(overlay);
     okBtn.focus();
   });
 }

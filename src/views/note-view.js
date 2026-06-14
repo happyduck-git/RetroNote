@@ -3,21 +3,26 @@ import { el } from "../core/dom.js";
 import { saveNote } from "../platform/notes-fs.js";
 import { playKey } from "../platform/sound.js";
 
+// CSS .shake 애니메이션 duration과 일치해야 한다 (style.css 참조).
+const SHAKE_DURATION_MS = 450;
+const TOAST_DURATION_MS = 1500;
+
 function shake(container) {
   container.classList.remove("shake");
   // 연속 트리거 시 애니메이션이 재시작되도록 강제 reflow.
   void container.offsetWidth;
   container.classList.add("shake");
-  setTimeout(() => container.classList.remove("shake"), 450);
+  setTimeout(() => container.classList.remove("shake"), SHAKE_DURATION_MS);
 }
 
 function showSavedToast(toast) {
   toast.classList.add("visible");
-  setTimeout(() => toast.classList.remove("visible"), 1500);
+  setTimeout(() => toast.classList.remove("visible"), TOAST_DURATION_MS);
 }
 
 export const noteView = {
   mount(screenEl) {
+    // 의도적 위반: shake 애니메이션은 외부 chrome(.screen-wrap=#computer-wrap)에 정의됨 — screenEl 만 흔들면 시각 효과가 깨진다.
     const container = document.getElementById("computer-wrap");
 
     const note = el("textarea", {

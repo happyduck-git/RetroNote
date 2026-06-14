@@ -11,6 +11,20 @@ import { roomView } from "./views/room-view.js";
 import { loginView } from "./views/login-view.js";
 import { resetView } from "./views/reset-view.js";
 import { getSession, onAuthChange } from "./auth/auth.js";
+import { clearLocalSession, getLastUid, setLastUid } from "./chat/session.js";
+
+// 사용자 전환(A→B) 감지: 마지막으로 본 uid 와 현재 uid 가 다르면 device-local 데이터 정리.
+// 처음 로그인 (last 가 null) 일 때는 정리할 게 없으므로 last 만 갱신.
+// 로그아웃 (current 가 null) 일 때도 last 만 비워둔다 — 정리는 SIGNED_OUT 핸들러에서 별도 수행.
+function syncSessionScope(currentUid) {
+  const last = getLastUid();
+  // last 가 null 이어도 currentUid 와 다르면 정리 — fix 이전부터 누수된 stale 상태가
+  // 첫 부팅에서 한 번 정리되도록(이미 추적된 후엔 last === current 라 no-op).
+  if (currentUid && last !== currentUid) {
+    clearLocalSession();
+  }
+  setLastUid(currentUid);
+}
 
 // 구버전(로컬 영속화) 잔여 메시지 키 정리. 메시지는 Postgres가 source of truth.
 function purgeLegacyMessageKeys() {
@@ -57,14 +71,23 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (isChatConfigured()) {
     try {
       const session = await getSession();
+      // 부팅 시점에 사용자가 바뀌어 있다면(앱 종료 중 다른 계정으로 로그인 등) 정리.
+      syncSessionScope(session?.user?.id || null);
       router.navigate(session ? "home" : "login");
     } catch (e) {
       console.error("session check failed:", e);
       router.navigate("login");
     }
-    // 로그아웃 이벤트 시 강제로 login 화면으로 복귀.
-    onAuthChange((event) => {
-      if (event === "SIGNED_OUT") router.navigate("login");
+    // 로그아웃 시: device-local 데이터 정리 후 login 화면으로 복귀.
+    // 새 로그인 시: 이전 uid 와 다르면 정리 (A→B 전환 보호).
+    onAuthChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        clearLocalSession();
+        setLastUid(null);
+        router.navigate("login");
+      } else if (event === "SIGNED_IN") {
+        syncSessionScope(session?.user?.id || null);
+      }
     }).catch((e) => console.error("auth subscribe failed:", e));
   } else {
     router.navigate("home");

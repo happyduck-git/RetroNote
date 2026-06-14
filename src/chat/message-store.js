@@ -114,6 +114,14 @@ export function createMessageStore(userId) {
     emit();
   }
 
+  // 기존 메시지의 일부 필드를 갱신한다(예: 송신 실패 플래그). id 매칭이 없으면 무시.
+  function update(id, patch) {
+    const m = messages.find((x) => x.id === id);
+    if (!m) return;
+    Object.assign(m, patch);
+    emit();
+  }
+
   function start() {
     // no-op. 호환성 유지.
   }
@@ -131,6 +139,7 @@ export function createMessageStore(userId) {
 
   return {
     add,
+    update,
     seed,
     start,
     stop,

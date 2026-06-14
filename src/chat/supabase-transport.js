@@ -3,7 +3,8 @@
 // 함께 구독한다. 송신은 DB INSERT 한 번 — postgres_changes echo가 자기 자신에게도 돌아온다.
 // 중복은 message-store의 id dedup으로 처리.
 import { getClient } from "../auth/auth.js";
-import { insertMessage, rowToMsg } from "./message-history.js";
+import { insertMessage } from "./message-history.js";
+import { rowToMsg } from "./supabase-mapper.js";
 
 const STATUS_MAP = {
   SUBSCRIBED: "connected",

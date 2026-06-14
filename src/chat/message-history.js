@@ -1,8 +1,9 @@
 // Supabase Postgres에 채팅 메시지/멤버십을 영속화하기 위한 CRUD 래퍼.
 // sender_uid, user_id는 DB DEFAULT auth.uid() 로 자동 채워진다(스키마 참조).
 // 와이어 메시지 envelope: { id, clientId, nickname, text, ts }.
-import { getClient } from "../auth/auth.js";
+import { getClient, getCurrentUserId } from "../auth/auth.js";
 import { normalize } from "./room-code.js";
+import { rowToMsg } from "./supabase-mapper.js";
 
 // 0003 이후 room_memberships SELECT 정책이 둘이다:
 //   - own memberships rw   → user_id = auth.uid()
@@ -11,17 +12,6 @@ import { normalize } from "./room-code.js";
 async function currentUid(client) {
   const { data } = await client.auth.getSession();
   return data?.session?.user?.id || null;
-}
-
-function rowToMsg(row) {
-  return {
-    id: row.id,
-    clientId: row.sender_client_id,
-    senderUid: row.sender_uid,
-    nickname: row.sender_nickname,
-    text: row.text,
-    ts: Number(row.ts),
-  };
 }
 
 // 멤버십 보장: 없으면 first_joined_at=now 로 insert. 이미 있으면 기존 값 그대로.
@@ -121,10 +111,9 @@ export async function updateMembershipNickname(code, nickname) {
 const FALLBACK_NICK_SCAN_LIMIT = 2000;
 
 export async function fetchMyLastNicknamesByRoom() {
-  const client = await getClient();
-  const { data: sess } = await client.auth.getSession();
-  const uid = sess?.session?.user?.id;
+  const uid = await getCurrentUserId();
   if (!uid) return new Map();
+  const client = await getClient();
   const { data, error } = await client
     .from("messages")
     .select("room_code, sender_nickname, ts")
@@ -181,5 +170,3 @@ export async function deleteMembership(code) {
   if (error) throw error;
 }
 
-// 와이어 row → envelope 변환은 transport(postgres_changes)에서도 재사용.
-export { rowToMsg };

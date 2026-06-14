@@ -283,6 +283,10 @@ body {
   min-height: 1.1em;
 }
 
+.form-error.success {
+  color: #7fff7f;
+}
+
 /* ----- 홈 메뉴 ----- */
 .menu {
   align-items: center;

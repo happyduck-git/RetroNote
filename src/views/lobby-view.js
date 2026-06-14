@@ -1,6 +1,6 @@
 // 로비: 방 생성(코드 발급) 또는 코드로 입장 + 최근 방 목록.
-import { el } from "../core/dom.js";
-import { confirmDialog } from "../core/confirm.js";
+import { el, onEnter } from "../core/dom.js";
+import { confirmDialog, alertDialog } from "../core/confirm.js";
 import { playKey } from "../platform/sound.js";
 import { generate6, isValid, normalize, CODE_LENGTH } from "../chat/room-code.js";
 import { getSavedRooms, setRoomAlias, removeSavedRoom, canAddRoom, MAX_SAVED_ROOMS, getRoomNickname, syncRoomsFromServer } from "../chat/session.js";
@@ -19,7 +19,7 @@ export const lobbyView = {
       onClick: () => {
         // CREATE는 항상 새 코드 → saved 목록 길이만 체크.
         if (getSavedRooms().length >= MAX_SAVED_ROOMS) {
-          alert(`Max ${MAX_SAVED_ROOMS} chat rooms reached.\nDelete one before creating a new room.`);
+          alertDialog(`Max ${MAX_SAVED_ROOMS} chat rooms reached.\nDelete one before creating a new room.`);
           return;
         }
         enterRoom(ctx, generate6());
@@ -45,9 +45,9 @@ export const lobbyView = {
         input.focus();
         return;
       }
-      // 이미 saved 목록에 있는 방 재입장은 허용. 새 방인데 상한 초과면 alert.
+      // 이미 saved 목록에 있는 방 재입장은 허용. 새 방인데 상한 초과면 안내.
       if (!canAddRoom(code)) {
-        alert(`Max ${MAX_SAVED_ROOMS} chat rooms reached.\nDelete one before joining a new room.`);
+        alertDialog(`Max ${MAX_SAVED_ROOMS} chat rooms reached.\nDelete one before joining a new room.`);
         return;
       }
       enterRoom(ctx, code);
@@ -57,12 +57,7 @@ export const lobbyView = {
     input.addEventListener("input", () => {
       input.value = normalize(input.value);
     });
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        join();
-      }
-    });
+    onEnter(input, join);
 
     const savedSection = el("div", { class: "saved-rooms" });
     renderSavedRooms(savedSection, ctx);
@@ -100,7 +95,7 @@ function renderSavedRooms(container, ctx) {
       onClick: (e) => {
         e.stopPropagation();
         playKey();
-        startAliasEdit(row, room, container, ctx);
+        startAliasEdit(row, aliasEl, room, container, ctx);
       },
     });
     const deleteBtn = el("button", {
@@ -116,7 +111,11 @@ function renderSavedRooms(container, ctx) {
           { okLabel: "DELETE" },
         );
         if (!ok) return;
-        await removeSavedRoom(room.code);
+        try {
+          await removeSavedRoom(room.code);
+        } catch (err) {
+          console.error("remove room failed:", err);
+        }
         renderSavedRooms(container, ctx);
       },
     });
@@ -132,13 +131,11 @@ function renderSavedRooms(container, ctx) {
       },
       [codeEl, aliasEl, actions],
     );
-    row._aliasEl = aliasEl;
     container.append(row);
   }
 }
 
-function startAliasEdit(row, room, container, ctx) {
-  const aliasEl = row._aliasEl;
+function startAliasEdit(row, aliasEl, room, container, ctx) {
   if (!aliasEl || !aliasEl.parentNode) return;
   const input = el("input", {
     class: "field saved-room-alias-input",
