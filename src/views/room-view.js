@@ -30,7 +30,6 @@ export const roomView = {
 
   async mount(screenEl, params, ctx) {
     const code = params.code;
-    const nickname = getRoomNickname(code);
     const clientId = getClientId();
     this._cancelled = false;
     // await 직전에 _cancelled 초기화 → await 중 unmount가 true로 세팅하면 아래 가드에서 빠진다.
@@ -38,7 +37,8 @@ export const roomView = {
     if (this._cancelled) return;
 
     // 안전망: 닉네임 없이 직접 진입한 경우(라우터 직접 호출 등) nickname으로 우회.
-    if (!nickname) {
+    // 여기서는 존재 여부만 본다 — 실제 표시값은 openRoom 의 양방향 sync 가 끝난 후 다시 읽는다.
+    if (!getRoomNickname(code)) {
       ctx.navigate("nickname", { code });
       return;
     }
@@ -64,6 +64,10 @@ export const roomView = {
     saveRoom(code);
     const { transport, store, firstJoinedAt } = entry;
     store.start();
+
+    // openRoom 의 "로컬·서버 다름 → 서버 우선" 분기가 localStorage 를 갱신했을 수 있다.
+    // 다른 기기에서 닉네임을 바꾸고 이 기기에서 재입장한 케이스에 새 이름으로 헤더가 떠야 한다.
+    const nickname = getRoomNickname(code);
 
     // 본격 마운트 — 로딩 화면을 교체.
     screenEl.replaceChildren();
