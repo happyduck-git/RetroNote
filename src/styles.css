@@ -1,3 +1,18 @@
+/* Galmuri11 한글 글리프를 VT323(영어) 시각 크기에 맞추는 보정 폰트.
+   Galmuri11 은 11px 비트맵이라 기본 x-height 가 VT323 보다 큼 → size-adjust 로 축소.
+   unicode-range 로 한글 영역만 담당 → ≡ ♪ 같은 기호는 폰트 스택의 다음 폰트(Courier New)로 폴백되어
+   기존 baseline 그대로 유지(예: top-controls 의 [≡][♪]가 괄호 밖으로 솟지 않도록). */
+@font-face {
+  font-family: "Galmuri11Adj";
+  font-style: normal;
+  font-weight: 400;
+  size-adjust: 80%;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF;
+  src: local("Galmuri11 Regular"),
+       url("https://cdn.jsdelivr.net/gh/quiple/galmuri/dist/Galmuri11.woff2") format("woff2"),
+       url("https://cdn.jsdelivr.net/gh/quiple/galmuri/dist/Galmuri11.ttf") format("truetype");
+}
+
 :root {
   /* 컴퓨터 이미지의 원본 가로:세로 비율 = 2170:1952 ≈ 1.1116 */
   /* 창 크기에 따라 자동 스케일: 가로/세로 중 작은 쪽 기준으로 비율 유지 */
@@ -77,7 +92,7 @@ body {
   resize: none;
   color: var(--crt-green);
   caret-color: var(--crt-green);
-  font-family: "VT323", "Courier New", monospace;
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
   font-size: calc(var(--computer-width) / 38);
   line-height: 1.15;
   padding: 0.4em 0.5em;
@@ -108,7 +123,7 @@ body {
   background: transparent;
   border: none;
   color: var(--crt-green);
-  font-family: "VT323", "Courier New", monospace;
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
   font-size: calc(var(--computer-width) / 35);
   cursor: pointer;
   -webkit-app-region: no-drag;
@@ -162,7 +177,7 @@ body {
 
 /* textarea 바로 아래 중앙 */
 .save-btn {
-  top: calc(var(--screen-top-pct) + var(--screen-height-pct) - 1%);
+  top: calc(var(--screen-top-pct) + var(--screen-height-pct) - 2.5%);
   left: 50%;
   transform: translateX(-50%);
 }
@@ -198,7 +213,7 @@ body {
   width: var(--screen-width-pct);
   text-align: center;
   color: var(--crt-green);
-  font-family: "VT323", "Courier New", monospace;
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
   font-size: calc(var(--computer-width) / 25);
   text-shadow: 0 0 10px rgba(0, 255, 65, 1);
   opacity: 0;
@@ -235,7 +250,7 @@ body {
   display: flex;
   flex-direction: column;
   color: var(--crt-green);
-  font-family: "VT323", "Courier New", monospace;
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
   text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
   padding: 0.4em 0.5em;
 }
@@ -257,8 +272,8 @@ body {
   border-bottom: 1px solid var(--crt-green);
   color: var(--crt-green);
   caret-color: var(--crt-green);
-  font-family: "VT323", "Courier New", monospace;
-  font-size: calc(var(--computer-width) / 40);
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
+  font-size: calc(var(--computer-width) / 34);
   outline: none;
   text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
   -webkit-app-region: no-drag;
@@ -278,7 +293,7 @@ body {
 
 .form-error {
   color: #ff5a5a;
-  font-size: calc(var(--computer-width) / 48);
+  font-size: calc(var(--computer-width) / 42);
   text-shadow: 0 0 4px rgba(255, 90, 90, 0.7);
   min-height: 1.1em;
 }
@@ -291,17 +306,17 @@ body {
 .menu {
   align-items: center;
   justify-content: center;
-  gap: 0.4em;
+  gap: 0.55em;
 }
 
 .menu-title {
-  font-size: calc(var(--computer-width) / 22);
-  margin-bottom: 0.3em;
+  font-size: calc(var(--computer-width) / 18);
+  margin-bottom: 0.6em;
   letter-spacing: 0.08em;
 }
 
 .menu-btn {
-  font-size: calc(var(--computer-width) / 28);
+  font-size: calc(var(--computer-width) / 26);
 }
 
 .menu-btn.disabled {
@@ -326,9 +341,15 @@ body {
   font-size: calc(var(--computer-width) / 30);
 }
 
+/* 라벨(Welcome!, NICKNAME FOR …) 과 그 직후 첫 입력창 사이만 살짝 띄우기 —
+   라벨이 시각적으로 input 그룹의 헤더처럼 보이도록. */
+.form-label + .field {
+  margin-top: 0.4em;
+}
+
 .lobby-sep {
   opacity: 0.5;
-  font-size: calc(var(--computer-width) / 44);
+  font-size: calc(var(--computer-width) / 38);
 }
 
 .form-btn,
@@ -338,7 +359,13 @@ body {
 
 /* 보조 액션(모드 전환 / forgot password 등) — 기본 form-btn의 절반 정도 크기 */
 .form-btn-small {
-  font-size: calc(var(--computer-width) / 60);
+  font-size: calc(var(--computer-width) / 44);
+}
+
+/* 메인 폼 버튼([SIGN IN]) 과 그 다음 보조 버튼([need account? SIGN UP]) 사이만 살짝 띄우기 —
+   보조 버튼들끼리(.form-btn-small ↔ .form-btn-small)의 간격은 그대로. */
+.form-btn:not(.form-btn-small) + .form-btn-small {
+  margin-top: 0.7em;
 }
 
 /* ----- 채팅방 ----- */
@@ -362,7 +389,7 @@ body {
 }
 
 .room-copy {
-  font-size: calc(var(--computer-width) / 50);
+  font-size: calc(var(--computer-width) / 42);
 }
 
 /* 본인 닉네임 라벨 + [✎]. as:alice [✎] 묶음. */
@@ -370,7 +397,7 @@ body {
   display: inline-flex;
   align-items: baseline;
   gap: 0.2em;
-  font-size: calc(var(--computer-width) / 50);
+  font-size: calc(var(--computer-width) / 42);
   opacity: 0.85;
   min-width: 0;
   flex: 0 1 auto;
@@ -381,7 +408,7 @@ body {
 }
 
 .room-nick {
-  max-width: 7em;
+  max-width: 5em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -389,12 +416,12 @@ body {
 
 .room-nick-edit {
   position: static;
-  font-size: calc(var(--computer-width) / 56);
+  font-size: calc(var(--computer-width) / 46);
   padding: 0 0.2em;
 }
 
 .room-nick-input {
-  font-size: calc(var(--computer-width) / 50);
+  font-size: calc(var(--computer-width) / 42);
   width: 5em;
   min-width: 3em;
   padding: 0 0.2em;
@@ -423,7 +450,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.15em;
-  font-size: calc(var(--computer-width) / 44);
+  font-size: calc(var(--computer-width) / 38);
   -webkit-app-region: no-drag;
   user-select: text;
   -webkit-user-select: text;
@@ -483,6 +510,7 @@ body {
 .room-input {
   flex: 1 1 auto;
   min-width: 0;
+  font-size: calc(var(--computer-width) / 42);
 }
 
 .room-send {
@@ -497,7 +525,7 @@ body {
   gap: 0.15em;
   margin-top: 0.6em;
   width: 80%;
-  max-height: 35%;
+  max-height: 42%;
   overflow-y: auto;
   -webkit-app-region: no-drag;
 }
@@ -586,7 +614,7 @@ body {
   flex-direction: column;
   gap: 0.6em;
   color: var(--crt-green);
-  font-family: "VT323", "Courier New", monospace;
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
   text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
 }
 
