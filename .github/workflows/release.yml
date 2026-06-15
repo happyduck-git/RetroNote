@@ -57,6 +57,15 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # --- macOS 코드 서명 + 공증(notarization) ---
+          # macOS 러너에서만 의미가 있다. Secret 이 비어 있으면 tauri-action 이
+          # 서명/공증을 자동으로 건너뛰므로(=기존 unsigned 동작) 안전하다.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "retro-note __VERSION__"
@@ -64,6 +73,19 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # Windows 무설치(포터블) 실행 파일: cargo 가 만든 원본 exe 를 그대로 릴리스에 첨부.
+      # 인스톨러(NSIS/MSI)와 달리 설치 과정 없이 더블클릭으로 실행된다.
+      # 주의: 서명이 없으므로 SmartScreen 경고는 인스톨러와 동일하게 뜬다(설치 단계만 생략).
+      - name: Attach Windows portable exe
+        if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp "src-tauri/target/release/retro-note.exe" "retro-note_portable.exe"
+          gh release upload "${{ github.ref_name }}" "retro-note_portable.exe" \
+            --clobber --repo "${{ github.repository }}"
 
   cleanup:
     needs: build
