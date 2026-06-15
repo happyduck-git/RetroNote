@@ -1,0 +1,43 @@
+# 로컬 Supabase 스택 설정 (통합 테스트용).
+# `supabase start` 가 이 파일을 읽어 prod 와 동일한 Postgres+Auth+PostgREST+Realtime 을 Docker 에 띄운다.
+# 포트/키는 고정값이라 어느 머신에서도 동일하게 재현된다(다른 컴퓨터·CI 에서도 같은 결과).
+#
+# 마이그레이션은 db/migrations/ 가 단일 소스다. supabase/migrations/ 는 비워 두고,
+# 테스트 harness 가 db/migrations/*.sql 을 순서대로 적용한다(파일 자체의 적용 가능성도 함께 검증).
+
+project_id = "retronote"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+# 통합 테스트가 signUp 즉시 세션을 받도록 이메일 확인을 끈다(로컬 전용).
+[auth.email]
+enable_signup = true
+enable_confirmations = false

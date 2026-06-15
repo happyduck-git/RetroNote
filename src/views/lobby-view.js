@@ -124,6 +124,9 @@ function renderSavedRooms(container, ctx) {
       "div",
       {
         class: "saved-room-item",
+        // data-no-drag: 이 행에서 mousedown 시 창 드래그(startDragging)가 시작되면
+        // click 이 삼켜져 방 입장이 안 된다(Windows). 드래그 예외로 등록해 클릭이 살아나게 한다.
+        dataset: { noDrag: "" },
         onClick: () => {
           playKey();
           enterRoom(ctx, room.code);

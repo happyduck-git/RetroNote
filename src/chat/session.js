@@ -2,7 +2,7 @@
 // 메시지 영속화는 Postgres가 담당하므로 여기서는 단순 보관/생명주기만 다룬다.
 import { createTransport } from "./transport.js";
 import { createMessageStore } from "./message-store.js";
-import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships, updateMembershipNickname, fetchMyLastNicknamesByRoom, fetchRoomMembers } from "./message-history.js";
+import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships, updateMembershipNickname, updateMembershipAlias, fetchMyLastNicknamesByRoom, fetchRoomMembers } from "./message-history.js";
 import { createBackfiller } from "./backfill.js";
 import { normalize, isValid } from "./room-code.js";
 import { getCurrentUserId } from "../auth/auth.js";
@@ -258,14 +258,36 @@ function restoreNicknameFromMembership(code, membership, localNicks, fallbackNic
   return true;
 }
 
+// 이미 로컬 목록에 있는 방의 alias 를 서버와 reconcile(nickname 과 동일한 server-priority 정책):
+//  - 로컬 O, 서버 NULL → 서버로 push(backfill). 로컬은 그대로 → list 변경 없음.
+//  - 서버 O, 로컬과 다름 → 로컬을 서버 값으로 덮어쓰기 → list 변경(true).
+// updateMembershipAlias 는 콜백이 없어 sync 를 재호출하지 않는다 → 재귀/루프 위험 없음.
+// 오프라인 로컬 변경이 서버에 push 되기 전이라면 다음 sync 에서 손실 가능(nickname 과 동일한
+// 의도된 trade-off — 아래 setRoomAlias 의 best-effort push 가 정상 경로에서 이를 막는다).
+function reconcileAlias(entry, code, membership) {
+  const localAlias = entry.alias || "";
+  const serverAlias = membership.alias || "";
+  if (localAlias && !serverAlias) {
+    updateMembershipAlias(code, localAlias).catch((e) => {
+      console.error("alias backfill to server failed:", e);
+    });
+    return false;
+  }
+  if (serverAlias && serverAlias !== localAlias) {
+    entry.alias = serverAlias;
+    return true;
+  }
+  return false;
+}
+
 // 서버(room_memberships)의 멤버십을 로컬 방 목록에 병합한다.
 // 새 기기/재설치 후 로그인하면 localStorage가 비어 로비가 빈다 → 서버에서 복원.
-// alias는 로컬 전용(복원 안 됨). nickname은 0002 마이그레이션 이후 서버 영속화되므로
-// 로컬에 없을 때 서버 값으로 채운다 → 다른 기기에서 닉네임 입력 화면 재출현 방지.
+// alias(개인 라벨)와 nickname 모두 서버 영속화되므로 로컬에 채우고/서버와 reconcile 한다
+//   → 다른 기기에서 같은 계정 로그인 시 방 이름·닉네임이 보존된다.
 // 0002 이전부터 사용해 온 사용자는 서버 nickname이 NULL이므로, 본인 메시지의
 // sender_nickname을 폴백으로 복구한다(한 번이라도 메시지를 보낸 방에 한해).
 // MAX_SAVED_ROOMS 상한을 지키며, first_joined_at 최신순으로 우선 채운다.
-// 반환: 새로 추가된 방이 하나라도 있으면 true(호출 측에서 재렌더 판단용).
+// 반환: 방 목록(추가/별명)이 하나라도 바뀌면 true(호출 측에서 재렌더 판단용).
 export async function syncRoomsFromServer() {
   const memberships = await fetchMemberships();
   if (!memberships.length) return false;
@@ -273,26 +295,33 @@ export async function syncRoomsFromServer() {
   memberships.sort((a, b) => (b.firstJoinedAt || 0) - (a.firstJoinedAt || 0));
 
   const list = readSavedRooms();
-  const known = new Set(list.map((r) => r.code));
+  const byCode = new Map(list.map((r) => [r.code, r]));
   const localNicks = readRoomNicks();
   // 폴백 조회는 1회만(N+1 회피). 실패 시 빈 Map → 폴백 효과만 사라지고 본 흐름은 정상.
   const fallbackNicks = await fetchMyLastNicknamesByRoom().catch(() => new Map());
 
-  let added = false;
+  let changed = false;
   let nicksChanged = false;
   for (const m of memberships) {
     if (!isValid(m.code)) continue;
     const code = normalize(m.code);
     if (restoreNicknameFromMembership(code, m, localNicks, fallbackNicks)) nicksChanged = true;
-    if (known.has(code)) continue;
+
+    const existing = byCode.get(code);
+    if (existing) {
+      // 이미 로컬에 있는 방: alias 만 서버와 reconcile(목록 추가는 아님).
+      if (reconcileAlias(existing, code, m)) changed = true;
+      continue;
+    }
     if (list.length >= MAX_SAVED_ROOMS) continue;
-    list.push({ code, alias: "", lastUsedAt: m.firstJoinedAt || 0 });
-    known.add(code);
-    added = true;
+    const entry = { code, alias: m.alias || "", lastUsedAt: m.firstJoinedAt || 0 };
+    list.push(entry);
+    byCode.set(code, entry);
+    changed = true;
   }
-  if (added) writeSavedRooms(list);
+  if (changed) writeSavedRooms(list);
   if (nicksChanged) writeRoomNicks(localNicks);
-  return added;
+  return changed;
 }
 
 // 방을 새로 추가 가능한지 확인. 이미 목록에 있는 코드 재입장은 항상 허용.
@@ -343,6 +372,13 @@ export function setRoomAlias(rawCode, alias) {
   const i = list.findIndex((r) => r.code === code);
   if (i < 0) return;
   const next = String(alias || "").trim().slice(0, ALIAS_MAX);
+  if ((list[i].alias || "") === next) return; // 값 변경 없으면 서버 호출 생략
   list[i] = { ...list[i], alias: next }; // lastUsedAt 보존 (편집은 사용으로 간주하지 않음)
   writeSavedRooms(list);
+  // 서버 영속화(best-effort) → 다른 기기에서 같은 계정 로그인 시 syncRoomsFromServer 가 복원.
+  // 실패해도 로컬은 이미 갱신 — 다음 sync 의 reconcile 이 서버를 backfill 한다.
+  // updateMembershipAlias 는 콜백이 없어 재귀/루프 위험 없음(빈 값은 NULL 로 저장 → 별명 삭제 동기화).
+  updateMembershipAlias(code, next).catch((e) => {
+    console.error("alias persist to server failed:", e);
+  });
 }

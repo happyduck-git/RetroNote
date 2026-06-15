@@ -79,13 +79,14 @@ export async function fetchMemberships() {
   if (!uid) return [];
   const { data, error } = await client
     .from("room_memberships")
-    .select("room_code, first_joined_at, nickname")
+    .select("room_code, first_joined_at, nickname, alias")
     .eq("user_id", uid);
   if (error) throw error;
   return data.map((r) => ({
     code: r.room_code,
     firstJoinedAt: Number(r.first_joined_at),
     nickname: r.nickname || null,
+    alias: r.alias || null,
   }));
 }
 
@@ -97,6 +98,19 @@ export async function updateMembershipNickname(code, nickname) {
   const { error } = await client
     .from("room_memberships")
     .update({ nickname })
+    .eq("room_code", code);
+  if (error) throw error;
+}
+
+// 현재 사용자의 해당 방 멤버십에 alias 컬럼을 갱신(개인 라벨 → 다른 기기 동기화용).
+// 빈 문자열은 NULL 로 저장해 "별명 없음" 상태를 다른 기기에도 일관되게 반영.
+// RLS(own memberships rw)가 user_id=auth.uid() 로 자동 한정 → 본인 row 만 업데이트.
+// 멤버십 row가 아직 없으면 0건 update 로 끝나며 에러는 아니다(이후 openRoom이 생성).
+export async function updateMembershipAlias(code, alias) {
+  const client = await getClient();
+  const { error } = await client
+    .from("room_memberships")
+    .update({ alias: alias || null })
     .eq("room_code", code);
   if (error) throw error;
 }

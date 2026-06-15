@@ -54,14 +54,37 @@ jobs:
           };
           EOF
 
+      # macOS 코드서명 인증서를 keychain 에 직접 import 한다.
+      # 비밀번호/p12/base64 가 잘못되면 바로 이 스텝에서 명확한 에러
+      # (예: "MAC verification failed ... wrong password?")로 멈추므로
+      # tauri-action 의 모호한 'failed to resolve signing identity' 대신
+      # 원인을 정확히 알 수 있다.
+      - name: Import Apple Developer ID certificate (macOS only)
+        if: matrix.platform == 'macos-latest'
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      # import 결과 검증: 아래 목록에 'Developer ID Application: 이름 (TEAMID)'
+      # 이 보여야 한다. 그 문자열이 APPLE_SIGNING_IDENTITY 와 정확히 일치해야
+      # tauri 가 서명에 성공한다(length 로 공백/따옴표 혼입 점검).
+      - name: Verify signing identity (macOS only)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          echo "=== Codesigning identities after import ==="
+          security find-identity -v -p codesigning
+          echo "=== APPLE_SIGNING_IDENTITY length: ${#APPLE_SIGNING_IDENTITY} ==="
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # --- macOS 코드 서명 + 공증(notarization) ---
-          # macOS 러너에서만 의미가 있다. Secret 이 비어 있으면 tauri-action 이
-          # 서명/공증을 자동으로 건너뛰므로(=기존 unsigned 동작) 안전하다.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # 인증서는 위 import 스텝에서 이미 keychain 에 넣었으므로 여기서는
+          # APPLE_CERTIFICATE 를 넘기지 않는다(이중 import/모호성 방지).
+          # tauri 는 APPLE_SIGNING_IDENTITY 로 keychain 의 식별자를 찾아 서명한다.
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}

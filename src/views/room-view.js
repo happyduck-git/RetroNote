@@ -142,7 +142,6 @@ function buildInputRow() {
     text: "[^_^]",
     title: "Insert emoji",
     type: "button",
-    disabled: true,
   });
   const input = el("input", {
     class: "field room-input",
@@ -151,7 +150,6 @@ function buildInputRow() {
     placeholder: "message…",
     spellcheck: "false",
     autocomplete: "off",
-    disabled: true,
     dataset: { noDrag: "" },
   });
   const sendBtn = el("button", { class: "btn room-send", text: "[ SEND ]", disabled: true });
