@@ -162,16 +162,27 @@ export async function fetchMessages(code, sinceTs) {
   return data.map(rowToMsg);
 }
 
+// text 와 attachment 중 적어도 하나는 있어야 한다(check constraint 가 강제).
+// 빈 text("" trim 후)는 NULL 로 저장 — 첨부만 있는 메시지에서 의미 없는 빈 문자열을 안 남기기 위함.
 export async function insertMessage(msg, code) {
   const client = await getClient();
-  const { error } = await client.from("messages").insert({
+  const row = {
     id: msg.id,
     room_code: code,
     sender_client_id: msg.clientId,
     sender_nickname: msg.nickname,
-    text: msg.text,
+    text: msg.text ? msg.text : null,
     ts: msg.ts,
-  });
+  };
+  if (msg.attachment) {
+    row.attachment_url   = msg.attachment.url;
+    row.attachment_kind  = msg.attachment.kind;
+    row.attachment_mime  = msg.attachment.mime;
+    row.attachment_w     = msg.attachment.width;
+    row.attachment_h     = msg.attachment.height;
+    row.attachment_bytes = msg.attachment.bytes ?? null;
+  }
+  const { error } = await client.from("messages").insert(row);
   if (error) throw error;
 }
 

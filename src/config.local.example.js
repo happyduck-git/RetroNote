@@ -9,3 +9,11 @@ export const SUPABASE = {
   url: "",
   anonKey: "",
 };
+
+// (선택) Tenor GIF 검색 키. 채팅 입력의 [gif] 버튼이 이 키로 Tenor v2 API 를 호출한다.
+//   값 얻는 법: console.cloud.google.com → APIs & Services → Library → "Tenor API" Enable
+//               → Credentials → Create credentials → API key.
+//   비워두면 [gif] 버튼이 숨겨지고 채팅의 다른 기능은 영향 없다.
+export const CHAT = {
+  tenorApiKey: "",
+};

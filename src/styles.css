@@ -713,6 +713,187 @@ body {
   width: 100%;
 }
 
+/* ===== 첨부 버튼 + GIF 버튼 (입력 행) ===== */
+/* emoji 버튼과 동일한 톤 — 같은 행에 자리 잡도록 position: static 강제. */
+.room-attach-btn,
+.room-gif-btn {
+  position: static;
+  font-size: calc(var(--computer-width) / 46);
+  flex: 0 0 auto;
+}
+
+/* ===== 첨부 미리보기 칩 (입력 행 위) ===== */
+/* 입력행과 같은 폭으로 자리 잡고, 첨부 없으면 hidden 으로 dom 자체 미점유. */
+.room-attach-preview[hidden] {
+  display: none;
+}
+.room-attach-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: calc(var(--computer-width) / 46);
+  color: var(--crt-green);
+  text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+  border: 1px dashed rgba(0, 255, 65, 0.45);
+  padding: 0.2em 0.4em;
+  flex: 0 0 auto;
+}
+.room-attach-remove {
+  position: static;
+  font-size: inherit;
+  flex: 0 0 auto;
+}
+.room-attach-label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.room-attach-preview--error {
+  border-color: rgba(255, 90, 90, 0.6);
+  color: #ff5a5a;
+  text-shadow: none;
+}
+
+/* ===== GIF picker 팝업 (emoji popup 과 동일한 absolute 배치) ===== */
+.room-gif-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 0.3em;
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid var(--crt-green);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.4);
+  padding: 0.5em 0.6em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  z-index: 9;
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
+  font-size: calc(var(--computer-width) / 46);
+  color: var(--crt-green);
+  text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+}
+.room-gif-popup[hidden] {
+  display: none;
+}
+
+.room-gif-search {
+  font-size: calc(var(--computer-width) / 46);
+  width: 100%;
+  padding: 0.15em 0.3em;
+}
+
+.room-gif-status {
+  opacity: 0.6;
+  font-size: calc(var(--computer-width) / 50);
+  text-align: center;
+  padding: 0.2em;
+}
+.room-gif-status[hidden] {
+  display: none;
+}
+
+/* 셀 그리드: 고정 높이 셀 + object-fit: cover 로 다양한 비율 GIF 가 같은 높이로 정돈된다.
+   max-height 는 emoji 그리드와 비슷한 비율로 잡아 윈도우 축소 시에도 화면을 안 잡아먹는다. */
+.room-gif-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4em, 1fr));
+  gap: 0.2em;
+  max-height: 10em;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+.room-gif-cell {
+  position: static;
+  background: transparent;
+  border: 1px solid rgba(0, 255, 65, 0.3);
+  padding: 0;
+  cursor: pointer;
+  height: 4em;
+  overflow: hidden;
+  display: block;
+  text-shadow: none;
+}
+.room-gif-cell:hover {
+  border-color: var(--crt-green);
+  box-shadow: 0 0 4px rgba(0, 255, 65, 0.5);
+}
+.room-gif-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.room-gif-attrib {
+  display: block;
+  text-align: center;
+  opacity: 0.5;
+  font-size: calc(var(--computer-width) / 52);
+  text-decoration: none;
+  color: var(--crt-green);
+  padding-top: 0.2em;
+  border-top: 1px solid rgba(0, 255, 65, 0.2);
+}
+.room-gif-attrib:hover {
+  opacity: 0.85;
+}
+
+/* ===== 채팅 메시지의 이미지/GIF 본문 ===== */
+/* attachment 가 있는 메시지는 flex-wrap 으로 이미지를 별 줄에 배치. who/caption/time 은 같은 줄. */
+.msg.has-attach {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.msg.has-attach .msg-image-wrap {
+  flex-basis: 100%;
+  max-width: 47%;
+  margin: 0.15em 0;
+}
+.msg.has-attach.mine .msg-image-wrap {
+  margin-left: auto; /* 본인 메시지: 오른쪽 정렬 (who/time 의 order: 2 와 일관) */
+}
+
+.msg-image-wrap {
+  display: block;
+  border: 1px solid rgba(0, 255, 65, 0.4);
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.msg-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* 픽셀 톤 — Tenor 작은 GIF 가 위로 스케일될 때 청키하게 보이도록 한다. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 업로드 이미지(kind="image") 에만 NES 풍 27색 팔레트 양자화 적용.
+   필터 정의는 index.html 의 hidden SVG (#retro-palette) — 한 곳에서만 유지.
+   contrast/saturate 사전 보정으로 양자화 후 톤이 너무 칙칙해지는 것을 보완. */
+.msg-image-wrap[data-kind="image"] .msg-image {
+  filter: contrast(1.1) saturate(1.15) url(#retro-palette);
+}
+
+.msg-image-broken {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 3em;
+  color: #ff5a5a;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
 
 /* ----- 로비: 저장된 채팅방 목록 ----- */
 .saved-rooms {
