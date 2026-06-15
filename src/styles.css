@@ -439,6 +439,13 @@ body {
   white-space: nowrap;
 }
 
+/* connState === "error" 일 때만 적용 — .msg.failed 와 톤 통일(#ff5a5a). */
+.room-status.room-status--error {
+  color: #ff5a5a;
+  text-shadow: 0 0 4px rgba(255, 90, 90, 0.7);
+  opacity: 1;
+}
+
 .room-leave {
   font-size: calc(var(--computer-width) / 46);
 }

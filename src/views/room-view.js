@@ -457,6 +457,7 @@ export const roomView = {
     let connState = "connecting";
     let onlineCount = null;
     function renderStatus() {
+      statusEl.classList.toggle("room-status--error", connState === "error");
       if (connState === "connected") {
         statusEl.textContent = onlineCount != null ? `● ${onlineCount} online` : STATUS_TEXT.connected;
       } else {
@@ -486,10 +487,9 @@ export const roomView = {
     const unsubStatus = transport.on("status", ({ state }) => {
       connState = state;
       const ok = state === "connected";
+      // 송신만 게이팅 — input/emoji picker 는 local 동작이므로 disconnect 중에도
+      // 메시지 작성/카오모지 삽입을 허용해 재연결 대기 시간을 가릴 수 있게 한다.
       sendBtn.disabled = !ok;
-      input.disabled = !ok;
-      emojiBtn.disabled = !ok;
-      if (!ok) picker.hide();
       renderStatus();
       if (ok) {
         if (hadConnectedOnce) backfill();
@@ -509,6 +509,9 @@ export const roomView = {
     // --- 송신: DB INSERT 하나로 보내고, postgres_changes echo가 자기 자신에게도 돌아옴.
     // 즉시 응답을 위해 낙관적 add도 함께 한다(중복은 store의 id dedup이 처리).
     async function doSend() {
+      // disconnect 중에도 input 은 enabled 라 Enter 키가 그대로 들어옴 — sendBtn 게이트와
+      // 동일하게 막아 transport.send 가 실패→failed 메시지로 박히는 것을 방지.
+      if (sendBtn.disabled) return;
       const text = input.value.trim();
       if (!text) return;
       // send 시점에 라이브로 다시 읽는다 — [✎]로 닉네임을 바꾼 직후 보낸 메시지는
@@ -546,9 +549,6 @@ export const roomView = {
         // 에서도 동일한 에러 상태로 수렴하도록 명시적으로 갱신.
         connState = "error";
         sendBtn.disabled = true;
-        input.disabled = true;
-        emojiBtn.disabled = true;
-        picker.hide();
         renderStatus();
       });
 
