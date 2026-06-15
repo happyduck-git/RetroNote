@@ -541,6 +541,10 @@ body {
   gap: 0.4em;
   z-index: 9; /* modal-overlay(10) 아래 */
   font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
+  /* em 기준을 --computer-width 에 묶어 popup 전체가 윈도우 축소 시 함께 줄어들도록 한다.
+     이 값이 없으면 grid 의 max-height: 7em 이 브라우저 기본 16px 기준으로 고정되어
+     윈도우가 작아져도 popup 이 충분히 줄지 않아 모니터 화면 위로 삐져나간다. */
+  font-size: calc(var(--computer-width) / 46);
   color: var(--crt-green);
   text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
 }
