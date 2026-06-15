@@ -54,6 +54,22 @@ jobs:
           };
           EOF
 
+      # 서명 실패 원인 진단용(임시). keychain 에 실제로 어떤 코드사인 식별자가
+      # import 되었는지, APPLE_SIGNING_IDENTITY 문자열과 일치하는지 확인한다.
+      # 원인 파악 후 이 스텝은 제거해도 된다.
+      - name: Debug signing identities (macOS only)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          echo "=== Available codesigning identities in keychain ==="
+          # 여기 목록에 'Developer ID Application: ... (TEAMID)' 이 보여야 한다.
+          # 보이지 않으면 => 인증서 import 실패(원인 3: 비밀번호/base64).
+          security find-identity -v -p codesigning || true
+          # 식별자 길이만 출력(값 자체는 GitHub 가 *** 로 마스킹). 위 목록의
+          # 식별자 문자열 길이와 다르면 => 오타/따옴표/공백(원인 2).
+          echo "=== APPLE_SIGNING_IDENTITY length: ${#APPLE_SIGNING_IDENTITY} ==="
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
