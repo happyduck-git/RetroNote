@@ -380,6 +380,64 @@ function buildGifPicker(onPick) {
   return { popupEl, toggle, hide, cleanup };
 }
 
+// 이미지 lightbox. 채팅 영역(.room)을 가득 채우는 overlay 로 큰 이미지를 보여준다.
+// 닫기: ESC, 바깥(backdrop) 클릭, [X] 버튼 — 세 가지 모두 동작.
+// data-kind 를 root 에 박아 CSS 가 업로드 이미지(image)에만 216색 팔레트 필터를 걸도록 한다.
+function buildLightbox() {
+  let visible = false;
+
+  const imgEl = el("img", { class: "lightbox-image", alt: "" });
+  const closeBtn = el("button", {
+    class: "btn lightbox-close",
+    text: "[X]",
+    title: "Close",
+    type: "button",
+  });
+  const rootEl = el("div", {
+    class: "lightbox",
+    hidden: true,
+    dataset: { noDrag: "" },
+  }, [imgEl, closeBtn]);
+
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      hide();
+    }
+  }
+
+  function show(src, { kind } = {}) {
+    if (visible) return;
+    visible = true;
+    imgEl.src = src;
+    rootEl.dataset.kind = kind || "";
+    rootEl.hidden = false;
+    // capture phase 로 등록 — emoji/gif picker 의 ESC 핸들러보다 먼저 받는다.
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  function hide() {
+    if (!visible) return;
+    visible = false;
+    rootEl.hidden = true;
+    imgEl.removeAttribute("src");
+    rootEl.dataset.kind = "";
+    document.removeEventListener("keydown", onKey, true);
+  }
+
+  closeBtn.addEventListener("click", hide);
+  // backdrop 클릭은 닫기, 이미지/버튼 자체 클릭은 유지.
+  rootEl.addEventListener("click", (e) => {
+    if (e.target === rootEl) hide();
+  });
+
+  function cleanup() {
+    if (visible) hide();
+  }
+
+  return { el: rootEl, show, hide, cleanup };
+}
+
 // 카오모지 picker 팝업. 단일 패널: 검색 input → 카테고리 sub-tab → 스크롤 grid.
 // 셀 클릭은 input 의 캡쳐된 selectionStart/End 위치에 문자열을 끼워넣고 팝업을 닫는다.
 // 팝업이 열리는 순간 selection 을 캡쳐 — 입력 도중 emoji 버튼을 눌러도 input 은 selectionStart 를
@@ -783,7 +841,18 @@ export const roomView = {
       });
     }
 
-    screenEl.append(el("div", { class: "room" }, [headerEl, list, attachPreview.el, inputRowEl]));
+    // lightbox 는 .room 의 마지막 자식으로 → position: absolute + inset: 0 으로 자연스럽게 채움.
+    const lightbox = buildLightbox();
+    screenEl.append(el("div", { class: "room" }, [headerEl, list, attachPreview.el, inputRowEl, lightbox.el]));
+
+    // 메시지 리스트의 이미지 클릭을 위임 처리 — 메시지마다 핸들러를 달지 않는다.
+    // broken 폴백(span)이나 다른 영역 클릭은 .msg-image 매칭이 안 돼 자연스럽게 무시.
+    list.addEventListener("click", (e) => {
+      const img = e.target.closest?.(".msg-image");
+      if (!img) return;
+      const wrap = img.closest(".msg-image-wrap");
+      lightbox.show(img.src, { kind: wrap?.dataset.kind || "" });
+    });
 
     // 파일 첨부: 클릭 → file picker → 즉시 업로드 → 완료 시 pendingAttachment 세팅. SEND 는 별도 클릭.
     // 업로드 중에는 mount 가 갈아끼워질 수 있어 mountToken 가드로 늦은 setState 를 차단.
@@ -932,6 +1001,7 @@ export const roomView = {
     this._cleanup = () => {
       picker.cleanup();
       if (gifPicker) gifPicker.cleanup();
+      lightbox.cleanup();
       unsubStore();
       unsubStatus();
       unsubPres();

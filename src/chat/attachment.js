@@ -10,11 +10,11 @@ const BUCKET = "chat-uploads";
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MiB. Storage 버킷의 file_size_limit 과 동일.
 const ALLOWED = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 // 정지 이미지의 긴 변 임계값. 초과 시 Canvas 다운스케일 + JPEG 0.85 재인코딩.
-// 채팅 UI 가 max-width: 47% + image-rendering: pixelated 로 작은 이미지를 청키하게 업스케일
+// 채팅 UI 가 max-width: 31% + image-rendering: pixelated 로 작은 이미지를 청키하게 업스케일
 // 표시하므로, 저장은 작게 가도 Retina/DPR 손해보다 픽셀 그레인이 살아나는 이득이 크다.
-// 512 는 27인치 풀스크린(표시 ~750px)에서도 약 1.5배 업스케일 → 픽셀감이 보이는 선.
+// 341 = 512 × 2/3 — display max-width 와 동일 비율로 동조시킨 값.
 // GIF 는 이 임계값과 무관 — 애니메이션 보존을 위해 원본 그대로 업로드한다.
-const DOWNSCALE_LONG_EDGE = 512;
+const DOWNSCALE_LONG_EDGE = 341;
 const JPEG_QUALITY = 0.85;
 
 const MIME_EXT = {

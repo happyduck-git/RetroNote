@@ -852,7 +852,7 @@ body {
 }
 .msg.has-attach .msg-image-wrap {
   flex-basis: 100%;
-  max-width: 47%;
+  max-width: 31%;
   margin: 0.15em 0;
 }
 .msg.has-attach.mine .msg-image-wrap {
@@ -873,6 +873,7 @@ body {
   /* 픽셀 톤 — Tenor 작은 GIF 가 위로 스케일될 때 청키하게 보이도록 한다. */
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  cursor: zoom-in;
 }
 
 /* 업로드 이미지(kind="image") 에만 NES 풍 27색 팔레트 양자화 적용.
@@ -892,6 +893,46 @@ body {
   color: #ff5a5a;
   font-size: 0.85em;
   opacity: 0.8;
+}
+
+/* ===== Lightbox: 채팅 이미지 클릭 시 .room 전체를 덮는 overlay ===== */
+.lightbox {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20; /* picker(9), modal-overlay(10) 위 */
+  cursor: zoom-out; /* backdrop 자체는 닫기 — zoom-out 으로 시그널 */
+}
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-image {
+  max-width: 95%;
+  max-height: 90%;
+  object-fit: contain;
+  /* 작게 저장한 이미지를 크게 띄울 때 청키한 픽셀감이 살아나도록. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border: 1px solid rgba(0, 255, 65, 0.6);
+  box-shadow: 0 0 12px rgba(0, 255, 65, 0.4);
+  cursor: default;
+}
+
+/* 업로드 이미지(kind="image") 에만 동일한 216색 팔레트 양자화 — 썸네일과 톤 일치. */
+.lightbox[data-kind="image"] .lightbox-image {
+  filter: contrast(1.1) saturate(1.15) url(#retro-palette);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  font-size: calc(var(--computer-width) / 46);
+  z-index: 21;
 }
 
 
