@@ -10,6 +10,8 @@ A cozy retro CRT terminal for quick thoughts. Always on top, always within reach
 
 retro-note is a single-screen note-taking app styled like an old CRT computer. Open it, type, save. No folders, no markdown, no sync — just a place to dump a thought before it slips away.
 
+Looks like a note app — but it's secretly an anonymous chat, too. Join a room by code and talk in real time under nothing but a nickname.
+
 Built with Tauri 2, runs natively on macOS and Windows.
 
 ## Features
@@ -17,11 +19,7 @@ Built with Tauri 2, runs natively on macOS and Windows.
 - CRT green-on-black aesthetic with mechanical keystroke sound
 - Always-on-top, transparent, borderless retro chassis
 - One file per note, saved as plain `.txt` to your Documents folder
-- Drag the chassis anywhere on screen
-- Resize via the green triangle grip (bottom-right) or keyboard shortcuts
-- Aspect ratio is locked to keep the chassis art intact
-- Mute toggle for the keystroke sound
-- **Chat rooms** — join a room by code and chat in real time (optional, needs a free Supabase project)
+- **Chat rooms** — join a room by code and chat in real time, with persisted message history (optional, requires an account)
 
 ## Keyboard shortcuts
 
@@ -45,48 +43,16 @@ Filename pattern: `note_YYYY-MM-DD_HH-MM.txt`
 
 On launch the screen offers **[ NOTE ]** and **[ CHAT ]**. Pick CHAT and:
 
-1. Set a nickname once (stored locally, asked only the first time).
-2. **Create a room** to get a 6-character code, or **join** by typing a code someone shared.
-3. Chat in real time. Anyone who joins later sees **only messages sent after they joined** — there is no history.
+1. **Sign in** (or sign up) with an email and password. Chat data is tied to your account, so your rooms, nicknames, and history follow you across devices.
+2. Set a nickname (asked the first time).
+3. **Create a room** to get a 6-character code, or **join** by typing a code someone shared.
+4. Chat in real time. **Messages are saved** — every time you come back (on any device you sign in to) you see the room's history from the moment you first joined. Messages sent before you joined a room are not shown.
 
-Room codes are the only access control, so don't share sensitive information.
+Anyone with the room code can join and read history from their join time onward, so the room code is the only access control — don't share sensitive information.
 
-### Set up chat (Supabase)
+## Development
 
-Chat needs a realtime backend. The [Supabase](https://supabase.com) **free plan** is plenty:
-
-1. Create a free Supabase project.
-2. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
-3. Copy the template and fill it in (`config.local.js` is gitignored, so your keys stay out of the repo):
-   ```bash
-   cp src/config.local.example.js src/config.local.js
-   ```
-   ```js
-   // src/config.local.js
-   export const SUPABASE = {
-     url: "https://YOUR-PROJECT.supabase.co", // base URL only, no /rest/v1 path
-     anonKey: "YOUR-ANON-PUBLIC-KEY",
-   };
-   ```
-   `src/config.js` loads these keys at runtime if present; without `config.local.js` the app still runs with chat disabled.
-4. Rebuild / re-run. If both values are empty, the **[ CHAT ]** button stays disabled and only notes work.
-
-Notes:
-- The anon key is a publishable key — it's safe to commit. Keep Supabase's **Realtime Authorization** at its default (off) so anonymous clients can use broadcast channels.
-- Free-plan projects pause after ~1 week of inactivity; click **Restore** in the dashboard to resume (still free, data intact).
-- This app ships with `csp: null`, so WebSocket connections are allowed. If you later set a Content-Security-Policy, add `connect-src https://*.supabase.co wss://*.supabase.co`.
-
-## Build from source
-
-Requires Node.js, Rust (with Cargo), and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
-
-```bash
-npm install
-npm run tauri dev      # development
-npm run tauri build    # production binary
-```
-
-The production build outputs to `src-tauri/target/release/bundle/` — `.dmg` on macOS, `.msi` / `.exe` on Windows.
+Building from source or self-hosting the chat backend? See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Tech
 
@@ -96,4 +62,4 @@ The production build outputs to `src-tauri/target/release/bundle/` — `.dmg` on
 
 ## License
 
-TBD
+[MIT](LICENSE) © 2026 happyduck
