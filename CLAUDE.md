@@ -1,0 +1,42 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+retro-note is a Tauri 2 desktop app (macOS + Windows): a single-screen, always-on-top CRT-styled note pad, plus an **optional** real-time chat backed by Supabase. The frontend is vanilla HTML/CSS/JS ES modules loaded directly by the system WebView — **there is no frontend build step or bundler**. `tauri.conf.json` points `frontendDist` at `../src`, so files in `src/` are served as-is.
+
+Code comments are written in Korean. Match that style when editing existing files.
+
+## Commands
+
+```bash
+npm install                # deps (Tauri CLI, supabase CLI, pg)
+npm run tauri dev          # run app in dev
+npm run tauri build        # production bundle → src-tauri/target/release/bundle/
+
+npm test                   # unit tests (fakes injected; no DB needed)
+node --test src/chat/message-store.test.js   # run a single unit test file
+npm run test:integration   # scenario tests against a real LOCAL Supabase stack
+npm run db:start           # supabase start (needs Docker Desktop running)
+npm run db:stop
+```
+
+`npm test` runs a fixed list of files (see `package.json` `scripts.test`); new unit tests must be added to that list to run in CI. Integration tests auto-read URL/keys via `supabase status -o env`.
+
+## Two test layers (this distinction matters)
+
+- **Unit** (`*.test.js` next to source): pure logic with server/storage **faked**. They cannot catch DB-level issues (RLS, sessions, Realtime).
+- **Integration** (`test/integration/`, see its `README.md`): boots the actual app modules against a local Supabase stack (Postgres + Auth + PostgREST + Realtime), replaying `db/migrations/*.sql`. This layer exists because an RLS infinite-recursion bug (Postgres `42P17`) once blocked room entry and unit tests were blind to it. Prefer adding/extending an integration scenario when touching RLS, auth, membership, or Realtime.
+
+## Where to look
+
+Subdirectories carry their own `CLAUDE.md` with deeper detail (loaded on demand):
+
+- `src/CLAUDE.md` — frontend bootstrap, view router, chat architecture (transport / message store / session).
+- `db/CLAUDE.md` — schema, RLS rules and the `42P17` recursion trap, migration workflow.
+- `src-tauri/CLAUDE.md` — the thin Rust layer and the Tauri capabilities allowlist.
+
+## Release / CI
+
+`.github/workflows/release.yml` builds and drafts a GitHub Release on `v*` tags via `tauri-action` (macOS arm64 + x64 with code-signing/notarization when secrets are set, Windows). It also attaches an unsigned Windows portable `.exe`, and CI injects the gitignored `src/config.local.js` from secrets. A `cleanup` job currently **deletes the Tauri updater artifacts** (`*.app.tar.gz`) from the release — the auto-updater is not yet wired up. `build-windows.yml` builds Windows installers as artifacts only (no release) for manual verification.
