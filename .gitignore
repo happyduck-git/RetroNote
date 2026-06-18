@@ -31,3 +31,8 @@ src/config.local.js
 
 # Supabase CLI link state (local cache: project-ref, version metadata)
 supabase/.temp/
+
+# Updater local e2e (scripts/updater-e2e.ps1): serve dir + signing keys — never commit
+.updater-e2e/
+retronote.key
+retronote.key.pub

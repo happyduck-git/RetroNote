@@ -66,12 +66,20 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # --- 업데이터 산출물 서명 (tauri-plugin-updater) ---
+          # APPLE_* 코드서명과 별개 체계. 이 키로 .app.tar.gz / 인스톨러에 .sig 를 만들고
+          # 앱은 tauri.conf.json 의 pubkey 로 검증한다. Secret 미설정 시 서명 단계가 실패하므로
+          # 업데이터를 켠 이상 두 secret 은 필수.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "retro-note __VERSION__"
           releaseBody: "See the assets below to download and install."
           releaseDraft: true
           prerelease: false
+          # latest.json 생성·업로드(업데이터 엔드포인트). 기본값 true 지만 의도를 명시.
+          uploadUpdaterJson: true
           args: ${{ matrix.args }}
 
       # Windows 무설치(포터블) 실행 파일: cargo 가 만든 원본 exe 를 그대로 릴리스에 첨부.
@@ -87,18 +95,5 @@ jobs:
           gh release upload "${{ github.ref_name }}" "retro-note_portable.exe" \
             --clobber --repo "${{ github.repository }}"
 
-  cleanup:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Remove macOS updater artifacts from release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for asset in retro-note_aarch64.app.tar.gz retro-note_x64.app.tar.gz; do
-            gh release delete-asset "${{ github.ref_name }}" "$asset" \
-              --yes --repo "${{ github.repository }}" || true
-          done
+  # NOTE: 과거의 'cleanup' 잡(.app.tar.gz 삭제)은 제거했다. 그 파일이 바로 업데이터가
+  # 내려받는 산출물이라, 삭제하면 자동 업데이트가 동작하지 않는다.
