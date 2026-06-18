@@ -58,6 +58,14 @@ export async function writeNote(filename, content) {
   return base;
 }
 
+// 노트 단건 삭제(파괴적). recursive 옵션을 전달하지 않아 디렉터리 삭제를 원천 차단.
+// safeBasename(requireBasename) 가드가 fs.remove 진입 전의 유일한 보안 관문 — traversal 등 차단.
+export async function deleteNote(filename) {
+  if (!fs) throw new Error("file system unavailable (not running in Tauri)");
+  const base = requireBasename(filename);
+  await fs.remove(notePath(base), opts());
+}
+
 // 새 노트 생성: 현재 시각으로 파일명을 발급해 저장(생성 wrapper).
 // markdown:true 이면 .md 로 발급(마크다운 소스 그대로). 그 외엔 기존 .txt.
 // 쓰기 권한(fs:allow-write-text-file / document-write-recursive)이 확장자와 무관하게 .md 도 커버 — 새 권한 불필요.
