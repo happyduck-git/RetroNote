@@ -3,8 +3,10 @@
 // 송신은 transport.send (DB INSERT) → echo로 자기 자신에게도 돌아오지만 store의 id dedup이 처리.
 import { el, pad2 } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
+import { openExternal } from "../platform/opener.js";
 import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom, changeRoomNickname } from "../chat/session.js";
 import { KAOMOJI_GROUPS } from "../chat/kaomoji-data.js";
+import { tokenizeMessage } from "../chat/linkify.js";
 
 const COPY_FEEDBACK_MS = 1200;
 const NEAR_BOTTOM_PX = 40;
@@ -376,12 +378,31 @@ function createScrollAnchor(list) {
   return { captureAnchor, restoreScroll };
 }
 
+// 메시지 본문을 텍스트/링크 노드 배열로 변환. URL은 클릭 시 기본 브라우저로 연다.
+// el()이 textContent/자식 노드만 다루므로 innerHTML 없이 안전하게 링크를 삽입한다.
+function renderMessageText(text) {
+  return tokenizeMessage(text).map((tok) => {
+    if (tok.type === "url") {
+      return el("a", {
+        class: "msg-link",
+        href: tok.value,
+        title: tok.value,
+        onClick: (e) => {
+          e.preventDefault();
+          openExternal(tok.value);
+        },
+      }, [tok.value]);
+    }
+    return document.createTextNode(tok.value);
+  });
+}
+
 // 메시지 한 줄을 DOM으로 변환. failed/mine 플래그로 클래스 결정.
 // displayName: nicknameMap(라이브 현재 이름) > sender_nickname snapshot(떠난 멤버 폴백).
 // 본인은 항상 "you" — 닉네임 변경 후에도 본인에게는 시각적 변화 없음.
 function renderMessageRow(m) {
   const who = el("span", { class: "msg-who", text: m.mine ? "you" : (m.displayName || m.nickname) });
-  const text = el("span", { class: "msg-text", text: m.text });
+  const text = el("span", { class: "msg-text" }, renderMessageText(m.text));
   const time = el("span", { class: "msg-time", text: fmtTime(m.ts) });
   let cls = "msg";
   if (m.mine) cls += " mine";
