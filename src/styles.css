@@ -213,16 +213,6 @@ body {
   transform: translateX(-50%) translateY(1px);
 }
 
-/* 화면 안쪽 좌상단 — TXT/MD 모드 토글 (top-controls 와 같은 상단 정렬) */
-.mode-toggle-btn {
-  top: calc(var(--screen-top-pct) - 2.5%);
-  left: var(--screen-left-pct);
-  font-size: calc(var(--computer-width) / 44);
-  padding: 0;
-  line-height: 1.2;
-  z-index: 2;
-}
-
 /* 우하단 리사이즈 그립 */
 .resize-grip {
   right: 4%;
