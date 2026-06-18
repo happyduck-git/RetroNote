@@ -5,13 +5,21 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "test": "node --test src/chat/backfill.test.js src/chat/message-store.test.js src/chat/change-nickname.test.js src/chat/linkify.test.js src/core/note-name.test.js",
+    "test": "node --test src/chat/backfill.test.js src/chat/message-store.test.js src/chat/change-nickname.test.js src/chat/linkify.test.js src/core/note-name.test.js src/views/md-decorations.test.js",
     "test:integration": "node --test test/integration/*.test.js",
     "db:start": "supabase start",
     "db:stop": "supabase stop"
   },
   "devDependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.1",
+    "@lezer/common": "^1.5.2",
+    "@lezer/markdown": "^1.6.4",
     "@tauri-apps/cli": "^2",
+    "esbuild": "^0.28.1",
     "pg": "^8.13.0",
     "supabase": "^2"
   },

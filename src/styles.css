@@ -118,6 +118,33 @@ body {
   }
 }
 
+/* MD 모드 CodeMirror 호스트 — #note 와 동일한 화면 절대박스를 차지하고 CM 이 채운다.
+   색/폰트/제목 크기 등 시각 스타일은 note-editor.js 의 EditorView.theme 가 담당. */
+.cm-host {
+  position: absolute;
+  top: var(--screen-top-pct);
+  left: var(--screen-left-pct);
+  width: var(--screen-width-pct);
+  height: var(--screen-height-pct);
+  -webkit-app-region: no-drag;
+}
+
+.cm-host .cm-editor {
+  height: 100%;
+}
+
+/* 네이티브 캐럿 깜빡임을 textarea 와 동일하게(@keyframes 재사용). */
+.cm-host .cm-content {
+  animation: caret-blink 1s steps(1) infinite;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 투명 배경에서 선택이 안 보이는 문제 — 녹색 반투명 하이라이트. */
+.cm-host .cm-content ::selection {
+  background: rgba(0, 255, 65, 0.25);
+}
+
 .btn {
   position: absolute;
   background: transparent;
