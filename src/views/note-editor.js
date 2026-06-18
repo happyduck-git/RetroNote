@@ -130,14 +130,29 @@ const crtTheme = EditorView.theme(
       height: "100%",
     },
     "&.cm-focused": { outline: "none" },
-    ".cm-scroller": { fontFamily: FONT, lineHeight: "1.15", overflow: "auto" },
+    // lineWrapping 이 켜져 있어 가로 스크롤은 불필요 — 세로만 스크롤, 가로는 숨김.
+    ".cm-scroller": { fontFamily: FONT, lineHeight: "1.15", overflowX: "hidden", overflowY: "auto" },
     ".cm-content": {
       caretColor: "var(--crt-green)",
       padding: "0.4em 0.5em",
       textShadow: "0 0 4px rgba(0, 255, 65, 0.7)",
     },
+    // CM 기본 .cm-line 은 좌우 2px 패딩이 있어 textarea(#note, 0.5em)보다 글자가 살짝 오른쪽에서
+    // 시작한다 → 0 으로 맞춰 TXT/MD placeholder·텍스트 시작 위치를 일치시킨다.
+    ".cm-line": { padding: "0" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--crt-green)" },
-    ".cm-placeholder": { color: "var(--crt-green)", opacity: "0.4" },
+    // placeholder 가 길어 lineWrapping 으로 줄바꿈되면 빈 첫 줄 박스가 2줄 높이가 되어
+    // 네이티브 캐럿이 2줄 길이로 보인다 → 한 줄로 고정(넘치면 잘림).
+    ".cm-placeholder": {
+      color: "var(--crt-green)",
+      opacity: "0.35", // #note::placeholder 와 동일하게 통일.
+      display: "inline-block",
+      maxWidth: "100%",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      verticalAlign: "top",
+    },
     // 제목: 크기만 키운다(색/글로우는 상속).
     ".cm-h1": { fontSize: "2em", fontWeight: "bold" },
     ".cm-h2": { fontSize: "1.6em", fontWeight: "bold" },
