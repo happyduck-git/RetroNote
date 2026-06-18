@@ -5,6 +5,7 @@ import { initWindowControls } from "./platform/window-controls.js";
 import { initSound } from "./platform/sound.js";
 import { homeView } from "./views/home-view.js";
 import { noteView } from "./views/note-view.js";
+import { noteListView } from "./views/note-list-view.js";
 import { nicknameView } from "./views/nickname-view.js";
 import { lobbyView } from "./views/lobby-view.js";
 import { roomView } from "./views/room-view.js";
@@ -52,12 +53,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   const screen = document.getElementById("screen");
   const homeBtn = document.getElementById("home-btn");
 
+  // 상단 [≡] 버튼은 "한 단계 위" 뷰로 이동한다. 명시되지 않은 뷰는 home 으로.
+  // note(편집기)는 항상 notes(목록)에서 진입하므로 목록으로 돌아가는 게 자연스럽다.
+  const PARENT_VIEW = { note: "notes" };
+  let currentView = null;
+
   // 홈/로그인/비번재설정 화면에서는 홈 버튼 숨김(세션 없는 상태에선 home 진입 금지).
   const router = createRouter(screen, (name) => {
+    currentView = name;
     if (homeBtn) homeBtn.hidden = name === "home" || name === "login" || name === "reset";
   });
 
   router.register("home", homeView);
+  router.register("notes", noteListView);
   router.register("note", noteView);
   router.register("nickname", nicknameView);
   router.register("lobby", lobbyView);
@@ -65,7 +73,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   router.register("login", loginView);
   router.register("reset", resetView);
 
-  if (homeBtn) homeBtn.addEventListener("click", () => router.navigate("home"));
+  if (homeBtn) homeBtn.addEventListener("click", () => router.navigate(PARENT_VIEW[currentView] || "home"));
 
   // Supabase 설정된 경우만 auth를 강제한다. 미설정 시 NOTE만 사용하는 기존 흐름 유지.
   if (isChatConfigured()) {

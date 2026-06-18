@@ -1,6 +1,8 @@
-// 노트 뷰: 기존 textarea + 저장 버튼 + 저장 토스트. 동작은 리팩터 이전과 동일.
+// 노트 뷰: textarea + 저장 버튼 + 저장 토스트.
+// params.filename 이 있으면 그 노트를 불러와 편집(같은 파일 덮어쓰기), 없으면 새 노트(첫 저장 시 파일 발급).
 import { el } from "../core/dom.js";
-import { saveNote } from "../platform/notes-fs.js";
+import { saveNote, writeNote, readNote } from "../platform/notes-fs.js";
+import { alertDialog } from "../core/confirm.js";
 import { playKey } from "../platform/sound.js";
 
 // CSS .shake 애니메이션 duration과 일치해야 한다 (style.css 참조).
@@ -21,7 +23,9 @@ function showSavedToast(toast) {
 }
 
 export const noteView = {
-  mount(screenEl) {
+  async mount(screenEl, params) {
+    // filename 이 있으면 그 파일을 편집. 새 노트의 첫 저장 후엔 발급된 파일명을 여기에 담아 같은 파일로 덮어쓴다.
+    let currentFilename = params?.filename || null;
     // 의도적 위반: shake 애니메이션은 외부 chrome(.screen-wrap=#computer-wrap)에 정의됨 — screenEl 만 흔들면 시각 효과가 깨진다.
     const container = document.getElementById("computer-wrap");
 
@@ -48,7 +52,9 @@ export const noteView = {
         return;
       }
       try {
-        await saveNote(content);
+        // 불러온(또는 이미 한 번 저장된) 노트는 같은 파일에 덮어쓰고, 새 노트는 파일명을 발급받아 캡처.
+        if (currentFilename) await writeNote(currentFilename, content);
+        else currentFilename = await saveNote(content);
         showSavedToast(toast);
       } catch (err) {
         console.error("save failed:", err);
@@ -58,7 +64,27 @@ export const noteView = {
 
     screenEl.append(note, toast, saveBtn);
 
-    // Autofocus on launch
-    setTimeout(() => note.focus(), 0);
+    if (currentFilename) {
+      // 불러오기: 로드가 늦게 끝나는 사이 사용자가 친 글자를 덮어쓰지 않도록 로드 중 입력 차단 후 완료 시 포커스.
+      note.readOnly = true;
+      try {
+        const content = await readNote(currentFilename);
+        if (!note.isConnected) return; // 로드 중 다른 화면으로 이동(router 가 replaceChildren)
+        note.value = content;
+      } catch (err) {
+        console.error("load failed:", err);
+        if (note.isConnected) note.value = "";
+        alertDialog("Failed to load note.");
+        currentFilename = null; // 알 수 없는 경로를 덮어쓰지 않도록 새 파일로 저장되게 함
+      } finally {
+        if (note.isConnected) {
+          note.readOnly = false;
+          note.focus();
+        }
+      }
+    } else {
+      // 새 노트: 기존 동작(즉시 포커스).
+      setTimeout(() => note.focus(), 0);
+    }
   },
 };

@@ -241,6 +241,7 @@ body {
 .menu,
 .form,
 .lobby,
+.note-list,
 .room {
   position: absolute;
   top: var(--screen-top-pct);
@@ -335,6 +336,27 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5em;
+}
+
+/* ----- 노트 목록 ----- */
+/* [+ NEW NOTE] 를 상단에 두고 그 아래 스크롤 목록(.saved-rooms 재사용)을 채운다. */
+.note-list {
+  align-items: center;
+  gap: 0.4em;
+}
+
+.note-list-empty,
+.note-list-error {
+  opacity: 0.5;
+  text-align: center;
+  font-size: calc(var(--computer-width) / 44);
+  margin-top: 0.4em;
+}
+
+.note-list-error {
+  color: #ff5a5a;
+  opacity: 0.85;
+  text-shadow: 0 0 4px rgba(255, 90, 90, 0.7);
 }
 
 .form-label {

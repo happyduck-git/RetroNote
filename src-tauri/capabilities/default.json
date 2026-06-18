@@ -14,6 +14,14 @@
     "core:window:allow-scale-factor",
     "fs:allow-write-text-file",
     "fs:allow-mkdir",
-    "fs:allow-document-write-recursive"
+    "fs:allow-read-text-file",
+    "fs:allow-read-dir",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$DOCUMENT/retro-notes" },
+        { "path": "$DOCUMENT/retro-notes/*" }
+      ]
+    }
   ]
 }
