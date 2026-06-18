@@ -14,17 +14,23 @@ test("formatTimestamp: 고정 Date → 초 단위 YYYY-MM-DD_HH-MM-SS", () => {
   assert.equal(formatTimestamp(new Date(2026, 0, 1, 0, 0, 0)), "2026-01-01_00-00-00");
 });
 
-test("noteFilename: note_ 접두 + .txt", () => {
+test("noteFilename: note_ 접두 + .txt(기본) / .md(markdown)", () => {
   assert.equal(noteFilename(new Date(2026, 5, 18, 14, 30, 5)), "note_2026-06-18_14-30-05.txt");
+  assert.equal(
+    noteFilename(new Date(2026, 5, 18, 14, 30, 5), { markdown: true }),
+    "note_2026-06-18_14-30-05.md",
+  );
 });
 
-test("isNoteFilename: 구(분)/신(초) 포맷 허용, 그 외 거부", () => {
+test("isNoteFilename: 구(분)/신(초) 포맷 + .txt|.md 허용, 그 외 거부", () => {
   assert.equal(isNoteFilename("note_2026-06-18_14-30.txt"), true); // 구 분 단위
   assert.equal(isNoteFilename("note_2026-06-18_14-30-05.txt"), true); // 신 초 단위
+  assert.equal(isNoteFilename("note_2026-06-18_14-30.md"), true); // 마크다운(분 단위)
+  assert.equal(isNoteFilename("note_2026-06-18_14-30-05.md"), true); // 마크다운(초 단위)
   assert.equal(isNoteFilename("notes.txt"), false);
   assert.equal(isNoteFilename("note_x.md"), false);
   assert.equal(isNoteFilename("random.txt"), false);
-  assert.equal(isNoteFilename("note_2026-06-18_14-30.md"), false);
+  assert.equal(isNoteFilename("note_2026-06-18_14-30.pdf"), false); // 허용되지 않은 확장자
 });
 
 test("compareNotesByName: 최신순 정렬(같은 분·다른 초 포함)", () => {

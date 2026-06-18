@@ -59,6 +59,8 @@ export async function writeNote(filename, content) {
 }
 
 // 새 노트 생성: 현재 시각으로 파일명을 발급해 저장(생성 wrapper).
-export async function saveNote(content) {
-  return writeNote(noteFilename(new Date()), content);
+// markdown:true 이면 .md 로 발급(마크다운 소스 그대로). 그 외엔 기존 .txt.
+// 쓰기 권한(fs:allow-write-text-file / document-write-recursive)이 확장자와 무관하게 .md 도 커버 — 새 권한 불필요.
+export async function saveNote(content, { markdown = false } = {}) {
+  return writeNote(noteFilename(new Date(), { markdown }), content);
 }

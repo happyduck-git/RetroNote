@@ -22,6 +22,12 @@ export function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
+// OS 보조키 + 리사이즈 단축키 안내 문구. TXT/MD 양쪽 편집기 placeholder 가 공유 → 한 곳에서만 수정.
+export function resizeHint() {
+  const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
+  return `${mod}+= / ${mod}+- to resize · ${mod}+0 to reset`;
+}
+
 export function onEnter(el, fn) {
   el.addEventListener("keydown", (e) => {
     // IME composition 중 Enter 는 commit 키 → 무시 (한글/일본어/중국어 입력 시 마지막 글자 중복 방지).
