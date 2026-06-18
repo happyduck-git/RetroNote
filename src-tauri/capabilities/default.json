@@ -22,6 +22,10 @@
         { "path": "$DOCUMENT/retro-notes" },
         { "path": "$DOCUMENT/retro-notes/*" }
       ]
+    },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
     }
   ]
 }

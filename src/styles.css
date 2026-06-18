@@ -510,6 +510,18 @@ body {
   white-space: pre-wrap;
 }
 
+/* 메시지 내 URL 하이퍼링크. CRT 톤 위에서 시안 계열로 링크임을 명확히 구분하고,
+   hover 시 글로우로 클릭 가능함을 강조. 클릭은 기본 브라우저로 연결된다. */
+.msg-link {
+  color: #5fefff;
+  text-decoration: underline;
+  cursor: pointer;
+  word-break: break-all;
+}
+.msg-link:hover {
+  text-shadow: 0 0 8px #5fefff;
+}
+
 .msg-time {
   opacity: 0.4;
   font-size: 0.8em;
