@@ -12,7 +12,7 @@ export const homeView = {
     const noteBtn = el("button", {
       class: "btn menu-btn",
       text: "[ NOTE ]",
-      onClick: () => ctx.navigate("note"),
+      onClick: () => ctx.navigate("notes"),
     });
     const chatBtn = el("button", {
       class: "btn menu-btn" + (chatEnabled ? "" : " disabled"),
