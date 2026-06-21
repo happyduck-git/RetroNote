@@ -44,13 +44,16 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Inject chat config (Supabase)
+      - name: Inject chat config (Supabase + Giphy)
         shell: bash
         run: |
           cat > src/config.local.js <<'EOF'
           export const SUPABASE = {
             url: "${{ secrets.SUPABASE_URL }}",
             anonKey: "${{ secrets.SUPABASE_ANON_KEY }}",
+          };
+          export const CHAT = {
+            giphyApiKey: "${{ secrets.GIPHY_API_KEY }}",
           };
           EOF
 
