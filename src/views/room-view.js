@@ -9,11 +9,15 @@ import { KAOMOJI_GROUPS } from "../chat/kaomoji-data.js";
 import { tokenizeMessage } from "../chat/linkify.js";
 import { withDateDividers } from "../chat/date-divider.js";
 import { uploadAttachment } from "../chat/attachment.js";
-import { searchGifs, featuredGifs, isTenorConfigured } from "../chat/tenor.js";
+import { searchGifs, featuredGifs, isGiphyConfigured } from "../chat/giphy.js";
 
 const COPY_FEEDBACK_MS = 1200;
 const NEAR_BOTTOM_PX = 40;
-const GIF_SEARCH_DEBOUNCE_MS = 250;
+// Giphy beta 키는 시간당 100회(앱 전체 공유) 한도라 호출을 아껴야 한다 — 디바운스를 넉넉히.
+const GIF_SEARCH_DEBOUNCE_MS = 600;
+
+// 상황별 카테고리 — 라벨이 곧 Giphy 검색어(영어). 미리 정한 쿼리라 호출이 예측 가능하고 캐싱이 잘 먹는다.
+const GIF_CATEGORIES = ["lol", "love", "yes", "no", "sad", "party", "hello", "wow", "clap", "cool"];
 
 function fmtBytes(n) {
   if (n == null) return "";
@@ -149,7 +153,7 @@ function buildNickEditor(getCurrentNick, onCommit) {
 }
 
 // 입력행: 이모지/첨부/(옵션)GIF 버튼 + 메시지 input + 전송 버튼. 초기 상태는 비활성(연결 후 활성).
-// showGifBtn=false 면 [gif] 버튼이 아예 빠진다(Tenor 키 미설정 시).
+// showGifBtn=false 면 [gif] 버튼이 아예 빠진다(Giphy 키 미설정 시).
 // fileInput 은 hidden 으로 행에 포함 — DOM tree 가 깨끗하고 별도 컨테이너 없이 attachBtn 트리거.
 function buildInputRow({ showGifBtn }) {
   const emojiBtn = el("button", {
@@ -237,13 +241,16 @@ function buildAttachPreview({ onRemove }) {
   return { el: rootEl, show, hide };
 }
 
-// Tenor GIF picker. 검색 입력 + 결과 그리드 + 하단 attribution.
+// Giphy GIF picker. 검색 입력 + 결과 그리드 + 하단 attribution.
 // 이모지 picker 와 동일한 popup 패턴(absolute, input-row 위쪽). 셀 클릭 → onPick(gif) → picker 닫힘.
 function buildGifPicker(onPick) {
   let visible = false;
   let abortCtl = null;
   let debounceTimer = null;
   let lastQuery = null;
+  // 같은 검색어를 다시 조회하지 않도록 결과를 캐싱한다(key: 쿼리, "" = 트렌딩).
+  // Giphy beta 키의 시간당 100회 공유 한도를 아끼기 위함.
+  const cache = new Map();
 
   const searchInput = el("input", {
     class: "field room-gif-search",
@@ -255,21 +262,65 @@ function buildGifPicker(onPick) {
   });
   const gridEl = el("div", { class: "room-gif-grid", dataset: { noDrag: "" } });
   const statusEl = el("div", { class: "room-gif-status", text: "", hidden: true });
+  // Giphy 약관(5A)은 공식 "Powered By GIPHY" 로고 마크를 눈에 띄게 표시하도록 요구한다 —
+  // 단순 텍스트 링크로는 약관 미준수. 로고(흰색 변형)는 styles.css 에 data URI 배경으로 박아 둔다
+  // (dev 서버가 실행 중 추가된 파일을 못 잡는 문제를 피하고, 정적 파일 서빙에 의존하지 않기 위함).
+  const attribImg = el("span", {
+    class: "room-gif-attrib-logo",
+    role: "img",
+    "aria-label": "Powered By GIPHY",
+  });
   const attribEl = el("a", {
     class: "room-gif-attrib",
-    href: "https://tenor.com",
+    href: "https://giphy.com",
     target: "_blank",
     rel: "noreferrer noopener",
-    text: "[ powered by tenor ]",
     dataset: { noDrag: "" },
-  });
+  }, [attribImg]);
 
   function setStatus(text) {
     statusEl.textContent = text;
     statusEl.hidden = !text;
   }
 
+  function renderResults(results) {
+    gridEl.replaceChildren();
+    if (!results.length) {
+      setStatus("no results");
+      return;
+    }
+    setStatus("");
+    const frag = document.createDocumentFragment();
+    for (const gif of results) {
+      const thumb = el("img", {
+        class: "room-gif-thumb",
+        src: gif.thumbUrl,
+        alt: gif.title || "",
+        loading: "lazy",
+      });
+      const cell = el("button", {
+        class: "btn room-gif-cell",
+        type: "button",
+        title: gif.title || "",
+      }, [thumb]);
+      cell.addEventListener("click", () => {
+        hide();
+        onPick(gif);
+      });
+      frag.append(cell);
+    }
+    gridEl.append(frag);
+    gridEl.scrollTop = 0;
+  }
+
   async function load(query) {
+    // 캐시 적중이면 네트워크 호출 없이 바로 렌더(진행 중 요청은 취소).
+    if (cache.has(query)) {
+      if (abortCtl) abortCtl.abort();
+      abortCtl = null;
+      renderResults(cache.get(query));
+      return;
+    }
     if (abortCtl) abortCtl.abort();
     abortCtl = new AbortController();
     const signal = abortCtl.signal;
@@ -280,35 +331,16 @@ function buildGifPicker(onPick) {
         ? await searchGifs(query, { signal })
         : await featuredGifs({ signal });
       if (signal.aborted) return;
-      if (!results.length) {
-        setStatus("no results");
-        return;
-      }
-      setStatus("");
-      const frag = document.createDocumentFragment();
-      for (const gif of results) {
-        const thumb = el("img", {
-          class: "room-gif-thumb",
-          src: gif.thumbUrl,
-          alt: gif.title || "",
-          loading: "lazy",
-        });
-        const cell = el("button", {
-          class: "btn room-gif-cell",
-          type: "button",
-          title: gif.title || "",
-        }, [thumb]);
-        cell.addEventListener("click", () => {
-          hide();
-          onPick(gif);
-        });
-        frag.append(cell);
-      }
-      gridEl.append(frag);
-      gridEl.scrollTop = 0;
+      cache.set(query, results);
+      renderResults(results);
     } catch (e) {
       if (e?.name === "AbortError") return;
-      console.error("tenor load failed:", e);
+      // 속도 제한(429): 자동 재시도하면 한도를 더 깎으므로 안내만 하고 멈춘다.
+      if (e?.name === "GiphyRateLimitError") {
+        setStatus("검색 한도 초과 — 잠시 후 다시 시도");
+        return;
+      }
+      console.error("giphy load failed:", e);
       setStatus("error — try again");
     }
   }
@@ -318,15 +350,38 @@ function buildGifPicker(onPick) {
     debounceTimer = setTimeout(() => load(query), GIF_SEARCH_DEBOUNCE_MS);
   }
 
+  // --- 상황별 카테고리 바 (카오모지 sub-tab 과 동일 패턴) ---
+  const catBtns = new Map();
+  const categoriesEl = el("div", { class: "room-gif-cats", dataset: { noDrag: "" } });
+  for (const term of GIF_CATEGORIES) {
+    const btn = el("button", { class: "btn room-gif-cat", text: term, title: term, type: "button" });
+    btn.addEventListener("click", () => {
+      searchInput.value = term;
+      lastQuery = term;
+      setActiveCat(term);
+      clearTimeout(debounceTimer); // 카테고리는 즉시 로드(캐시 적중이면 네트워크 호출 없음)
+      load(term);
+    });
+    catBtns.set(term, btn);
+    categoriesEl.append(btn);
+  }
+  function setActiveCat(active) {
+    for (const [term, btn] of catBtns) btn.classList.toggle("active", term === active);
+  }
+
   searchInput.addEventListener("input", () => {
     const q = searchInput.value.trim();
     if (q === lastQuery) return;
     lastQuery = q;
+    setActiveCat(q); // 카테고리와 일치하면 강조, 아니면 강조 해제
+    // 1글자는 입력 도중으로 보고 호출을 보류한다(한도 절약). 빈 칸은 트렌딩으로 허용.
+    if (q.length === 1) return;
     scheduleLoad(q);
   });
 
   const popupEl = el("div", { class: "room-gif-popup", hidden: true }, [
     searchInput,
+    categoriesEl,
     statusEl,
     gridEl,
     attribEl,
@@ -687,7 +742,7 @@ function renderMessageRow(m) {
   const children = [who];
   if (m.attachment) {
     // data-kind 는 CSS 가 본인 업로드(image) 에만 retro-palette 필터를 걸기 위한 마커.
-    // gif_external 은 원본 색 그대로 보존 — Tenor GIF 는 이미 작가 의도된 톤이라 그대로 둔다.
+    // gif_external 은 원본 색 그대로 보존 — 외부 GIF 는 이미 작가 의도된 톤이라 그대로 둔다.
     const wrap = el("div", { class: "msg-image-wrap", dataset: { kind: m.attachment.kind || "" } });
     if (m.attachment.width && m.attachment.height) {
       wrap.style.aspectRatio = `${m.attachment.width} / ${m.attachment.height}`;
@@ -775,7 +830,7 @@ export const roomView = {
       nicknameEditor,
     });
     const list = el("div", { class: "room-list", dataset: { noDrag: "" } });
-    const showGifBtn = isTenorConfigured();
+    const showGifBtn = isGiphyConfigured();
     const { inputRowEl, emojiBtn, attachBtn, gifBtn, fileInput, input, sendBtn } = buildInputRow({ showGifBtn });
     // emoji picker 팝업은 input row 의 자식으로 append — input row 의 position: relative 가 앵커.
     const picker = buildEmojiPicker(input);
@@ -803,34 +858,24 @@ export const roomView = {
       if (gifBtn) gifBtn.disabled = connState !== "connected";
     }
 
-    // GIF picker 는 [gif] 버튼 표시 시에만 만든다. 클릭 → 단독 메시지로 즉시 전송(text 없음).
+    // GIF picker 는 [gif] 버튼 표시 시에만 만든다.
+    // 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
     let gifPicker = null;
-    async function onGifPick(gif) {
-      if (sendBtn.disabled) return;
-      const liveNick = getRoomNickname(code) || nickname;
-      const msg = {
-        id: crypto.randomUUID(),
-        clientId,
-        senderUid: userId,
-        nickname: liveNick,
-        text: "",
-        ts: Date.now(),
-        attachment: {
-          url: gif.gifUrl,
-          kind: "gif_external",
-          mime: "image/gif",
-          width: gif.gifW,
-          height: gif.gifH,
-          bytes: gif.gifBytes,
-        },
+    function onGifPick(gif) {
+      // 외부(Giphy) GIF 는 업로드가 없어 바로 ready. 기존 pendingAttachment 가 있으면 이걸로 교체된다.
+      pendingAttachment = {
+        url: gif.gifUrl,
+        kind: "gif_external",
+        mime: "image/gif",
+        width: gif.gifW,
+        height: gif.gifH,
+        bytes: gif.gifBytes,
       };
-      store.add(msg);
-      try {
-        await transport.send(msg);
-      } catch (e) {
-        console.error("send gif failed:", e);
-        store.update(msg.id, { failed: true });
-      }
+      fileInput.value = "";
+      const label = gif.title && gif.title.trim() ? gif.title.trim() : "GIF";
+      attachPreview.show({ filename: label, status: "ready", bytes: gif.gifBytes });
+      syncAttachBtn();
+      input.focus();
     }
     if (gifBtn) {
       gifPicker = buildGifPicker(onGifPick);
@@ -924,7 +969,7 @@ export const roomView = {
       const ok = state === "connected";
       // 송신만 게이팅 — input/emoji picker 는 local 동작이므로 disconnect 중에도
       // 메시지 작성/카오모지 삽입을 허용해 재연결 대기 시간을 가릴 수 있게 한다.
-      // 첨부/GIF 는 외부 호출(업로드/Tenor)이라 연결 상태와 함께 토글한다.
+      // 첨부/GIF 는 외부 호출(업로드/Giphy)이라 연결 상태와 함께 토글한다.
       sendBtn.disabled = !ok;
       syncAttachBtn();
       syncGifBtn();

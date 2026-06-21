@@ -5,7 +5,7 @@
 --   - 한 메시지는 text 또는 attachment 중 적어도 하나는 있어야 한다(check constraint).
 --   - attachment_url 은 두 가지 출처:
 --       (1) Supabase Storage 의 chat-uploads 버킷 public URL (사용자가 올린 png/jpg/webp/gif)
---       (2) Tenor 외부 GIF URL (검색 picker 로 보낸 GIF — 우리 storage 안 씀)
+--       (2) Giphy 외부 GIF URL (검색 picker 로 보낸 GIF — 우리 storage 안 씀)
 --     수신측 렌더는 출처 구분 없이 attachment_url 을 그대로 <img> src 로 박는다.
 --   - attachment_kind 는 'image' | 'gif_external' — 표시는 동일하지만 출처를 메타데이터로 남겨
 --     향후 통계/관리/이관 시 외부 GIF 와 본인 업로드를 분리할 수 있게 한다.

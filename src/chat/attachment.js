@@ -1,5 +1,5 @@
 // 이미지 첨부 처리: 검증 → (정지 이미지 한정) 다운스케일 → Supabase Storage 업로드.
-// GIF 는 애니메이션 보존 위해 리사이즈 없이 그대로 업로드. 외부(Tenor) GIF 는 이 파일을 경유하지 않는다.
+// GIF 는 애니메이션 보존 위해 리사이즈 없이 그대로 업로드. 외부(Giphy) GIF 는 이 파일을 경유하지 않는다.
 //
 // 반환 envelope: { url, kind, mime, width, height, bytes } — message 의 attachment_* 컬럼에 그대로 박힘.
 // 실패 시 throw — 호출 측(room-view.doSend)이 메시지 전송 자체를 중단한다.
@@ -111,7 +111,7 @@ function makePath(roomCode, mime) {
 }
 
 // 메인 진입점. File 을 받아 검증·다운스케일·업로드 후 메시지에 박을 envelope 반환.
-// kind 는 항상 'image' — 'gif_external' 은 Tenor 경로(별도 모듈)가 직접 만든다.
+// kind 는 항상 'image' — 'gif_external' 은 Giphy 경로(별도 모듈)가 직접 만든다.
 export async function uploadAttachment(file, roomCode) {
   const norm = await normalize(file);
   const client = await getClient();

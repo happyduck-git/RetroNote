@@ -6,8 +6,8 @@
 //
 // 설정법: `cp src/config.local.example.js src/config.local.js` 후 값 입력.
 export let SUPABASE = { url: "", anonKey: "" };
-// CHAT.tenorApiKey 가 없으면 채팅의 [gif] 버튼은 숨겨진다. 채팅 자체는 정상 동작.
-export let CHAT = { tenorApiKey: "" };
+// CHAT.giphyApiKey 가 없으면 채팅의 [gif] 버튼은 숨겨진다. 채팅 자체는 정상 동작.
+export let CHAT = { giphyApiKey: "" };
 
 export function isChatConfigured() {
   return !!(SUPABASE.url && SUPABASE.anonKey);
@@ -20,7 +20,7 @@ export async function loadConfig() {
     if (mod?.SUPABASE?.url && mod?.SUPABASE?.anonKey) {
       SUPABASE = mod.SUPABASE;
     }
-    if (mod?.CHAT?.tenorApiKey) {
+    if (mod?.CHAT?.giphyApiKey) {
       CHAT = { ...CHAT, ...mod.CHAT };
     }
   } catch {

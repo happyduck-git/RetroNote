@@ -774,6 +774,11 @@ body {
   font-size: calc(var(--computer-width) / 46);
   color: var(--crt-green);
   text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+  /* 모니터의 화면 영역 높이(--screen-height-pct ≈ 39.65% × 화면높이 0.8995cw ≈ 0.357cw)를 넘지 않도록
+     팝업 전체 높이에 상한을 둔다. 모든 길이가 --computer-width 에 비례하므로 윈도우 크기와 무관하게 일정.
+     내부 grid 가 스크롤을 담당해, 어떤 크기에서도 팝업이 화면 위로 삐져나가지 않는다. */
+  max-height: calc(var(--computer-width) / 3.2);
+  overflow-y: auto;
 }
 .room-gif-popup[hidden] {
   display: none;
@@ -783,6 +788,31 @@ body {
   font-size: calc(var(--computer-width) / 46);
   width: 100%;
   padding: 0.15em 0.3em;
+}
+
+/* 상황별 카테고리 바 — 카오모지 sub-tab 과 동일 톤. */
+.room-gif-cats {
+  display: flex;
+  gap: 0.05em;
+  flex-wrap: wrap;
+  border-bottom: 1px solid rgba(0, 255, 65, 0.3);
+  padding-bottom: 0.25em;
+}
+.room-gif-cat {
+  position: static;
+  font-size: calc(var(--computer-width) / 50);
+  padding: 0.1em 0.35em;
+  opacity: 0.55;
+  text-shadow: none;
+  line-height: 1.1;
+}
+.room-gif-cat:hover {
+  opacity: 0.85;
+  color: var(--crt-green);
+}
+.room-gif-cat.active {
+  opacity: 1;
+  background: rgba(0, 255, 65, 0.12);
 }
 
 .room-gif-status {
@@ -801,7 +831,7 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(4em, 1fr));
   gap: 0.2em;
-  max-height: 10em;
+  max-height: 6em;
   overflow-y: auto;
   -webkit-app-region: no-drag;
 }
@@ -830,18 +860,30 @@ body {
   image-rendering: crisp-edges;
 }
 
+/* Giphy 약관이 요구하는 공식 "Powered By GIPHY" 로고 마크. 텍스트가 아닌 이미지. */
 .room-gif-attrib {
-  display: block;
-  text-align: center;
-  opacity: 0.5;
-  font-size: calc(var(--computer-width) / 52);
-  text-decoration: none;
-  color: var(--crt-green);
-  padding-top: 0.2em;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  opacity: 0.6;
+  padding-top: 0.3em;
   border-top: 1px solid rgba(0, 255, 65, 0.2);
 }
 .room-gif-attrib:hover {
-  opacity: 0.85;
+  opacity: 1;
+}
+.room-gif-attrib-logo {
+  /* 공식 "Powered By GIPHY" 흰색 마크를 data URI 로 직접 박는다 — 정적 파일 서빙/핫리로드에 의존 X. */
+  display: block;
+  height: calc(var(--computer-width) / 96);
+  /* 빈 span 이라 내용 기반 너비가 0 으로 무너진다 → 로고 비율(200x22)로 너비를 명시해야 배경이 보인다. */
+  width: calc(var(--computer-width) / 96 * 200 / 22);
+  flex: 0 0 auto;
+  aspect-ratio: 200 / 22;
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAWCAYAAACFbNPBAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAABRdJREFUeNrsW6+X2zgQdu8FhMXQbAPDmmNhG1jWwGX1sWXNf7A5dqxZVtbAY7dlYedlgSoLdJmhw8xy1nuf3ptTNZLl2N5Nq3lvXhNZHo2k+eZXtm/O53MU6OpoDp5q4xk4UFckARL4ajitOT/bqax5U3NseH/DvNNkjomkLrual4y+meGdzLI/0/wNnnH73ljkbSx6Nzrz34KLuAqSkULU/KXmG8fcSc0PmD/vWS+py4ea/635qea4x7VSZvzBEElVlH3wlPUDBYBcDzjetjDeIdOt9wBJXyT38sg82xnGtszcR59zCQB5/fSEqNCG1gPreuvjnVvQpuYTs+5K2/etYd53yGhMI09PplMJ1mlWc4LPOZjKqWouDPILPFMUg+X42BLClaykgY5TRobSKcFauvzK82wqonfC7FmtxclPLZHjEeDJSNGeEsP4g/GsbenZkMJMGFDuegJIiT3+w0SMDDaysaRWZV8A4TyDIKFVXvidwZALzCmAdGkUf2mGIuXvaz6Q8Ts82+JClo4Qm1q8sHDMySHnHWPwB1xA5Xk2e+xZnslnAhL5/R7ythaPqdMJ5yC0dQT0X8MIujZS/exjnIcO4LdRvyTv8itSOj2l3ODuJpemVm0Aogx9T76/g+FK4zrCUMZQRBBPs4SRfMa8BaLMkcxR/x7IBSRYs3TkmwWJHoKsPca6K+hYMvuIDIa/I3oswJHhPdfZKAeSYkzJXZELr5gi84bxlMJyR9uB0qkSa31hwNRn/ZPiPnUgfGTmf/NNrdoCpNLSpb/hsWJc6NgQBTKML4jB6ACZkUgS4/CnxOB1T++6uFzz/Esi17QPLqJQD30PvQ9MmNZlZoiAKrVSXaUFScuO5AxcHtvkINIGOb/osRaJLXdgq1POHYBTGvwnD0CVQwDEdkCcQUcEFDE+FwZQCJJLZ+S5aGA4Nm+VMHovDYCwgeYArz9l9phoxprA+AsSeWZk3crR9YkbAHfKFKNDddfWFlD2TVvch2v/f16iz6gFIKhhLcilTZlUJTIUpwLpxoy8d8D3Ofl8NMhzAYT+wkyL/NwBkMwBkNJhuGND7RJjvCKAuCPRt/I8/9MLdtOaev2vA+qUwpYmXadWXQFEXTrN7xMDIGba9yMByAzvFhinxfixYeHKRY4xKZRNBbkPzRwpHpWZkAbDkqx/JB2rY4v7mkSvn7YDrpU7Uq300gVGLRTaWcLqHIZPvePYYPAlAQONAAeSp7c1IgF5CeqGpIOLUJGtSe0SEcDHhohTeZy1iVYkNcsYo7h5IXA06RSdLCnPvIUT2DIAeewi1Rt1jGYFknutQzWG8RdaFJlpwFEdq5hJrzivsGfSuicYVApgV0y9YOpCpVqaptIiW8RKteh1ST7OvbfWAJIZUtChAXKCJ9823BfXgMg6rKnKLoSMPAFQOOY8QTHarSkADmFIs/LoxzZuRrpdtu4U10UqDUY2J7WNKwIUzLqZ5dBzRsbBEAULD4B8Nxj7LcCeMilwX38P9czoKMi9/3TkA5CmOXsWNeuBV4xMYemEiRY66u+59rFvcY4+9YyPfOmVTb8zfIAXpoY5RbTsq05ZRr8gjaJAr5lUpDClHTKyfAxH1C+FP1Z8/SSjwrcL3l+HIwwA+ZmpRHrj+/uCrF9+j4b50S6kWIFeHCQrACV11BrPSM12TDPh2bFWkzlNSTQcsz3LWzYQ8i428Cb8n/SrpWn0/1/uyxAtuqcAkECBLPSfAAMAD0//f+CYk/8AAAAASUVORK5CYII=");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 /* ===== 채팅 메시지의 이미지/GIF 본문 ===== */
@@ -870,7 +912,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  /* 픽셀 톤 — Tenor 작은 GIF 가 위로 스케일될 때 청키하게 보이도록 한다. */
+  /* 픽셀 톤 — 작은 GIF 가 위로 스케일될 때 청키하게 보이도록 한다. */
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   cursor: zoom-in;
