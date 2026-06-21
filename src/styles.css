@@ -632,6 +632,11 @@ body {
   font-size: calc(var(--computer-width) / 46);
   color: var(--crt-green);
   text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+  /* GIF 팝업(.room-gif-popup)과 동일한 오버플로 전략: 팝업 전체 높이에 화면 영역 기준 상한을 두고
+     내부 grid 가 스크롤을 담당한다. 평소 카오모지 팝업은 이 상한보다 낮아 보이지 않지만,
+     탭/서브탭이 늘어나도 모니터 화면 밖으로 삐져나가지 않도록 같은 안전장치를 맞춰 둔다. */
+  max-height: calc(var(--computer-width) / 3.2);
+  overflow-y: auto;
 }
 
 .room-emoji-popup[hidden] {

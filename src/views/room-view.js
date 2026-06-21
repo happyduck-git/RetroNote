@@ -335,6 +335,9 @@ function buildGifPicker(onPick) {
       renderResults(results);
     } catch (e) {
       if (e?.name === "AbortError") return;
+      // 오류로 끝난 쿼리는 캐시되지 않는다. lastQuery 도 비워, 같은 검색어를 다시 입력만 해도
+      // (input 핸들러의 q === lastQuery 가드에 막히지 않고) 재시도되게 한다.
+      lastQuery = null;
       // 속도 제한(429): 자동 재시도하면 한도를 더 깎으므로 안내만 하고 멈춘다.
       if (e?.name === "GiphyRateLimitError") {
         setStatus("검색 한도 초과 — 잠시 후 다시 시도");
@@ -843,26 +846,36 @@ export const roomView = {
     // --- 첨부/GIF 상태 ---
     // 한 번에 하나의 첨부만 허용 — 업로드 완료 후 SEND 까지 보류한다. SEND 또는 [×] 로 해제.
     let pendingAttachment = null;
+    // 미리보기에 보여 줄 첨부 라벨(파일명 또는 GIF 제목). 전송 실패 시 첨부 미리보기 복원에 쓴다.
+    let pendingAttachmentLabel = "";
+    // 업로드가 진행 중인 동안(아직 pendingAttachment 가 비어 있는 구간) 첨부·GIF 버튼을 함께 잠그는 플래그.
+    // 이게 없으면 업로드 도중 고른 GIF 의 staging 이 업로드 완료 시점에 조용히 덮어써진다.
+    let uploading = false;
     const attachPreview = buildAttachPreview({
       onRemove: () => {
         pendingAttachment = null;
+        pendingAttachmentLabel = "";
         fileInput.value = "";
         attachPreview.hide();
         syncAttachBtn();
+        syncGifBtn();
       },
     });
     function syncAttachBtn() {
-      attachBtn.disabled = connState !== "connected" || !!pendingAttachment;
+      attachBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
     }
     function syncGifBtn() {
-      if (gifBtn) gifBtn.disabled = connState !== "connected";
+      if (gifBtn) gifBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
     }
 
     // GIF picker 는 [gif] 버튼 표시 시에만 만든다.
     // 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
     let gifPicker = null;
     function onGifPick(gif) {
-      // 외부(Giphy) GIF 는 업로드가 없어 바로 ready. 기존 pendingAttachment 가 있으면 이걸로 교체된다.
+      // 한 번에 하나만 — 이미 첨부가 있거나 업로드 중이면 무시한다(파일 첨부 경로와 동일 정책).
+      // 평소엔 syncGifBtn 가 이 상태에서 [gif] 버튼을 잠그지만, 만약을 위한 방어 가드.
+      if (pendingAttachment || uploading) return;
+      // 외부(Giphy) GIF 는 업로드가 없어 바로 ready.
       pendingAttachment = {
         url: gif.gifUrl,
         kind: "gif_external",
@@ -873,8 +886,10 @@ export const roomView = {
       };
       fileInput.value = "";
       const label = gif.title && gif.title.trim() ? gif.title.trim() : "GIF";
+      pendingAttachmentLabel = label;
       attachPreview.show({ filename: label, status: "ready", bytes: gif.gifBytes });
       syncAttachBtn();
+      syncGifBtn();
       input.focus();
     }
     if (gifBtn) {
@@ -909,14 +924,18 @@ export const roomView = {
     fileInput.addEventListener("change", async () => {
       const file = fileInput.files?.[0];
       if (!file) return;
-      if (pendingAttachment) return;
+      if (pendingAttachment || uploading) return;
       const filename = file.name;
+      uploading = true;
       attachPreview.show({ filename, status: "uploading" });
-      attachBtn.disabled = true;
+      // 업로드 중에는 첨부·GIF 버튼을 함께 잠근다 — 그 사이 GIF 를 골라도 staging 이 덮어써지지 않도록.
+      syncAttachBtn();
+      syncGifBtn();
       try {
         const att = await uploadAttachment(file, code);
         if (mountToken !== myToken) return;
         pendingAttachment = att;
+        pendingAttachmentLabel = filename;
         attachPreview.show({ filename, status: "ready", bytes: att.bytes });
       } catch (e) {
         console.error("upload failed:", e);
@@ -924,7 +943,11 @@ export const roomView = {
           attachPreview.show({ filename, status: "error", message: e.message });
         }
       } finally {
-        if (mountToken === myToken) syncAttachBtn();
+        uploading = false;
+        if (mountToken === myToken) {
+          syncAttachBtn();
+          syncGifBtn();
+        }
         fileInput.value = "";
       }
     });
@@ -1003,12 +1026,18 @@ export const roomView = {
       const liveNick = getRoomNickname(code) || nickname;
       const msg = { id: crypto.randomUUID(), clientId, senderUid: userId, nickname: liveNick, text, ts: Date.now() };
       if (pendingAttachment) msg.attachment = pendingAttachment;
+      // 전송 실패 시 되돌리기 위해 비우기 전에 보관해 둔다.
+      const prevText = input.value;
+      const prevAttachment = pendingAttachment;
+      const prevLabel = pendingAttachmentLabel;
       input.value = "";
       // 첨부는 한 번 박은 후 즉시 비움 — 다음 메시지는 빈 상태에서 시작.
       if (pendingAttachment) {
         pendingAttachment = null;
+        pendingAttachmentLabel = "";
         attachPreview.hide();
         syncAttachBtn();
+        syncGifBtn();
       }
       store.add(msg);
       try {
@@ -1017,6 +1046,16 @@ export const roomView = {
         console.error("send failed:", e);
         // 실패해도 메시지는 그대로 두되, failed 플래그로 시각적 피드백을 준다(사용자가 재전송 결정).
         store.update(msg.id, { failed: true });
+        // 비워 둔 입력/첨부를 되돌려 곧바로 다시 보낼 수 있게 한다.
+        // 단 그 사이 사용자가 새 입력/첨부를 시작했다면 덮어쓰지 않는다.
+        if (prevText && !input.value.trim()) input.value = prevText;
+        if (prevAttachment && !pendingAttachment) {
+          pendingAttachment = prevAttachment;
+          pendingAttachmentLabel = prevLabel;
+          attachPreview.show({ filename: prevLabel || "attachment", status: "ready", bytes: prevAttachment.bytes });
+          syncAttachBtn();
+          syncGifBtn();
+        }
       }
     }
     sendBtn.addEventListener("click", doSend);
