@@ -71,9 +71,10 @@ export function makeCheckForUpdate({ getUpdater, relaunch, confirm, alert, progr
           case "Progress":
             received += e.data?.chunkLength ?? 0;
             // 총 크기를 모르면(서버 미제공) 퍼센트 대신 받은 용량(MB)을 보여준다.
+            // 받은 바이트가 총량을 넘어도 100% 를 넘지 않게 클램프.
             prog.set(
               total > 0
-                ? `DOWNLOADING… ${Math.floor((received / total) * 100)}%`
+                ? `DOWNLOADING… ${Math.min(100, Math.floor((received / total) * 100))}%`
                 : `DOWNLOADING… ${(received / 1048576).toFixed(1)} MB`,
             );
             break;

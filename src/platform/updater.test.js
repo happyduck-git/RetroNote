@@ -161,6 +161,20 @@ describe("checkForUpdate — 설치/재시작 결과", () => {
     assert.match(deps.alert.calls[0][0], /UPDATE INSTALLED/);
     assert.doesNotMatch(deps.alert.calls[0][0], /FAILED/);
   });
+
+  // 방어 경로: 다이얼로그조차 못 띄우는 환경(alert 가 throw)에서도 크래시 없이 끝나야 한다.
+  test("설치 실패 + alert 까지 throw 해도 크래시 없이 종료", async () => {
+    const deps = buildDeps({
+      alert: spy(async () => {
+        throw new Error("no dialog");
+      }),
+    });
+    deps._update.downloadAndInstall = spy(async () => {
+      throw new Error("install boom");
+    });
+    await assert.doesNotReject(() => makeCheckForUpdate(deps)());
+    assert.equal(deps.alert.calls.length, 1); // 시도는 했다
+  });
 });
 
 describe("releaseNotes", () => {
@@ -226,5 +240,21 @@ describe("checkForUpdate — 진행 표시 모달", () => {
     await makeCheckForUpdate(deps)();
     assert.equal(deps._progress.close.calls.length, 1);
     assert.ok(calledWithMatch(deps.alert, /UPDATE INSTALLED/));
+  });
+
+  test("받은 바이트가 총량을 넘어도 퍼센트는 100 을 안 넘음(클램프)", async () => {
+    const deps = buildDeps();
+    deps._update.downloadAndInstall = spy(async (cb) => {
+      cb({ event: "Started", data: { contentLength: 100 } });
+      cb({ event: "Progress", data: { chunkLength: 150 } }); // 총량 초과
+    });
+    await makeCheckForUpdate(deps)();
+    // set 된 어떤 문구에도 100 초과 퍼센트는 없어야 한다.
+    const over100 = deps._progress.set.calls.some((a) => {
+      const m = String(a[0]).match(/(\d+)%/);
+      return m && Number(m[1]) > 100;
+    });
+    assert.ok(!over100);
+    assert.ok(calledWithMatch(deps._progress.set, /100%/));
   });
 });
