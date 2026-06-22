@@ -718,13 +718,38 @@ body {
   width: 100%;
 }
 
-/* ===== 첨부 버튼 + GIF 버튼 (입력 행) ===== */
+/* ===== 첨부([+]) 버튼 (입력 행) ===== */
 /* emoji 버튼과 동일한 톤 — 같은 행에 자리 잡도록 position: static 강제. */
-.room-attach-btn,
-.room-gif-btn {
+.room-media-btn {
   position: static;
   font-size: calc(var(--computer-width) / 46);
   flex: 0 0 auto;
+}
+
+/* ===== 첨부 메뉴 팝업 ([+] 클릭 → [img]/[gif]) ===== */
+/* GIF popup 과 같은 CRT 톤이지만 폭은 내용에 맞게 작게 — 입력 행 왼쪽 위에 뜬다. */
+.room-attach-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 0.3em;
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid var(--crt-green);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.4);
+  padding: 0.25em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+  z-index: 9;
+}
+.room-attach-menu[hidden] {
+  display: none;
+}
+.room-attach-menu-item {
+  position: static;
+  font-size: calc(var(--computer-width) / 46);
+  text-align: left;
+  white-space: nowrap;
 }
 
 /* ===== 첨부 미리보기 칩 (입력 행 위) ===== */
