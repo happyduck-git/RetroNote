@@ -568,6 +568,23 @@ body {
   margin-left: 0.2em;
 }
 
+/* 날짜 구분선: 가운데 yyyy-mm-dd, 좌우로 흐릿한 hairline. .room-list flex 컬럼의 한 행. */
+.msg-date-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  opacity: 0.5;
+  font-size: 0.8em;
+  margin: 0.2em 0;
+  user-select: none;
+}
+.msg-date-divider::before,
+.msg-date-divider::after {
+  content: "";
+  flex: 1 1 auto;
+  border-top: 1px solid rgba(0, 255, 65, 0.3);
+}
+
 .room-input-row {
   display: flex;
   gap: 0.3em;
