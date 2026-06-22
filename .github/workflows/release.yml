@@ -102,7 +102,8 @@ jobs:
           releaseDraft: true
           prerelease: false
           # latest.json 생성·업로드(업데이터 엔드포인트). 기본값 true 지만 의도를 명시.
-          uploadUpdaterJson: true
+          # (입력 이름은 tauri-action 의 includeUpdaterJson — uploadUpdaterJson 은 무효라 무시됨)
+          includeUpdaterJson: true
           args: ${{ matrix.args }}
 
       # Windows 무설치(포터블) 실행 파일: cargo 가 만든 원본 exe 를 그대로 릴리스에 첨부.
