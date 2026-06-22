@@ -7,6 +7,7 @@ import { openExternal } from "../platform/opener.js";
 import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom, changeRoomNickname } from "../chat/session.js";
 import { KAOMOJI_GROUPS } from "../chat/kaomoji-data.js";
 import { tokenizeMessage } from "../chat/linkify.js";
+import { withDateDividers } from "../chat/date-divider.js";
 
 const COPY_FEEDBACK_MS = 1200;
 const NEAR_BOTTOM_PX = 40;
@@ -410,6 +411,14 @@ function renderMessageRow(m) {
   return el("div", { class: cls, dataset: { id: m.id }, title: m.failed ? "send failed" : null }, [who, text, time]);
 }
 
+// 날짜 구분선 한 줄. dataset.id 를 "date-<yyyy-mm-dd>" 로 박아 스크롤 앵커(dataset.id 기준)에 자연스럽게
+// 잡히게 하고, 메시지 UUID 와 충돌하지 않게 한다. 좌우 hairline 은 CSS ::before/::after 가 그린다.
+function renderDateDivider(dateStr) {
+  return el("div", { class: "msg-date-divider", dataset: { id: "date-" + dateStr } }, [
+    el("span", { class: "msg-date-divider-text", text: dateStr }),
+  ]);
+}
+
 export const roomView = {
   _code: null,
   _cleanup: null,
@@ -488,7 +497,11 @@ export const roomView = {
     const { captureAnchor, restoreScroll } = createScrollAnchor(list);
     list.addEventListener("scroll", captureAnchor, { passive: true });
     const unsubStore = store.subscribe((messages) => {
-      list.replaceChildren(...messages.map(renderMessageRow));
+      // 날짜가 바뀌는 첫 메시지 앞에 yyyy-mm-dd 구분선을 끼워 넣는다(로컬 시간대 기준).
+      const rows = withDateDividers(messages);
+      list.replaceChildren(
+        ...rows.map((item) => (item.divider ? renderDateDivider(item.date) : renderMessageRow(item))),
+      );
       restoreScroll();
     });
     const ro = new ResizeObserver(restoreScroll);
