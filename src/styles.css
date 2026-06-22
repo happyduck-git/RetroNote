@@ -820,6 +820,20 @@ body {
   text-align: center;
 }
 
+/* 릴리스 노트 등 긴 내용용. 왼쪽 정렬 + 높이 제한 + 세로 스크롤. */
+.modal-notes {
+  max-height: 9em;
+  overflow-y: auto;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: calc(var(--computer-width) / 50);
+  line-height: 1.35;
+  padding: 0.4em 0.55em;
+  border: 1px solid rgba(0, 255, 65, 0.4);
+  opacity: 0.92;
+}
+
 .modal-actions {
   display: flex;
   justify-content: center;
