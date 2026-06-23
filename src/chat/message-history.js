@@ -52,11 +52,11 @@ export async function ensureMembership(code) {
   };
 }
 
-// 특정 방의 모든 멤버 (user_id, nickname) 조회.
+// 특정 방의 모든 멤버 (user_id, nickname) 조회. 반환: Map<user_id, nickname>.
 // 0003 마이그레이션의 "memberships visible to co-members" 정책 덕에 본인이 멤버인 방에 한해
-// 같은 방 멤버들의 row 가 보인다. 반환: Map<user_id, nickname>.
-// nickname 이 NULL 인 row(아직 backfill 안 된 사용자)는 제외 — 호출 측은 message.sender_nickname
-// snapshot 폴백을 사용하므로 누락돼도 표시가 깨지지 않는다.
+// 같은 방 멤버들의 row 가 보인다.
+// 메시지 표시는 더 이상 이 맵을 쓰지 않는다(각 메시지는 자기 sender_nickname 박제값으로 표시).
+// 남아 있는 이유: co-member SELECT RLS 정책(42P17 무한재귀 회귀)을 통합테스트가 직접 검증하는 read helper.
 export async function fetchRoomMembers(code) {
   const client = await getClient();
   const { data, error } = await client

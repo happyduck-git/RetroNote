@@ -35,7 +35,7 @@ import {
   syncRoomsFromServer,
   removeSavedRoom,
 } from "../../src/chat/session.js";
-import { fetchMemberships, updateMembershipAlias } from "../../src/chat/message-history.js";
+import { fetchMemberships, updateMembershipAlias, fetchRoomMembers } from "../../src/chat/message-history.js";
 import { normalize } from "../../src/chat/room-code.js";
 
 const CODE = "ABC234";
@@ -93,8 +93,7 @@ beforeEach(async () => {
 describe("RLS / 방 입장 (지난번 42P17 재귀 회귀 가드)", () => {
   test("openRoom 은 RLS 무한재귀 없이 성공한다", async () => {
     await freshUser();
-    // ensureMembership(SELECT) + fetchRoomMembers(SELECT, co-member 정책) 를 실제 RLS 로 평가.
-    // 0003 이전의 잘못된 정책이면 여기서 42P17 로 throw → 방 진입 불가.
+    // ensureMembership(SELECT) 를 실제 RLS 로 평가. 0003 이전의 잘못된 정책이면 42P17 로 throw.
     const entry = await openRoom(CODE);
     try {
       assert.equal(typeof entry.firstJoinedAt, "number");
@@ -102,6 +101,11 @@ describe("RLS / 방 입장 (지난번 42P17 재귀 회귀 가드)", () => {
       const list = await fetchMemberships();
       assert.equal(list.length, 1);
       assert.equal(normalize(list[0].code), CODE);
+
+      // co-member SELECT 정책(0003) 도 직접 평가 — 메시지 표시는 더 이상 이 경로를 쓰지 않지만,
+      // 정책 자체가 42P17 무한재귀 없이 동작하는지를 회귀 가드로 계속 검증한다. 반환은 Map.
+      const members = await fetchRoomMembers(CODE);
+      assert.ok(members instanceof Map, "fetchRoomMembers 는 Map 을 반환해야 함");
     } finally {
       closeRoom(CODE);
     }
