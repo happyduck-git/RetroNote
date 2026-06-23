@@ -9,3 +9,11 @@ export const SUPABASE = {
   url: "",
   anonKey: "",
 };
+
+// (선택) Giphy GIF 검색 키. 채팅 입력의 [gif] 버튼이 이 키로 Giphy v1 API 를 호출한다.
+//   값 얻는 법: developers.giphy.com → Create an App → "API"(SDK 아님) 선택 → API key 발급.
+//   신규(beta) 키는 시간당 100회 한도이며 앱 전체가 공유한다. 사용량이 커지면 production 키 승급 필요.
+//   비워두면 [gif] 버튼이 숨겨지고 채팅의 다른 기능은 영향 없다.
+export const CHAT = {
+  giphyApiKey: "",
+};

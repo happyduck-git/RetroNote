@@ -8,9 +8,23 @@ import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom, changeRoom
 import { KAOMOJI_GROUPS } from "../chat/kaomoji-data.js";
 import { tokenizeMessage } from "../chat/linkify.js";
 import { withDateDividers } from "../chat/date-divider.js";
+import { uploadAttachment } from "../chat/attachment.js";
+import { searchGifs, featuredGifs, isGiphyConfigured } from "../chat/giphy.js";
 
 const COPY_FEEDBACK_MS = 1200;
 const NEAR_BOTTOM_PX = 40;
+// Giphy beta 키는 시간당 100회(앱 전체 공유) 한도라 호출을 아껴야 한다 — 디바운스를 넉넉히.
+const GIF_SEARCH_DEBOUNCE_MS = 600;
+
+// 상황별 카테고리 — 라벨이 곧 Giphy 검색어(영어). 미리 정한 쿼리라 호출이 예측 가능하고 캐싱이 잘 먹는다.
+const GIF_CATEGORIES = ["lol", "love", "yes", "no", "sad", "party", "hello", "wow", "clap", "cool"];
+
+function fmtBytes(n) {
+  if (n == null) return "";
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)}kb`;
+  return `${(n / 1024 / 1024).toFixed(1)}mb`;
+}
 
 // mount 토큰: 동일 뷰 객체가 register-once 싱글톤이라 await 중 재mount가 끼어들 수 있다.
 // mount 진입 시 myToken 캡처 → unmount/재mount는 mountToken 증가 → 이전 await 분기가 자기 myToken 과의 불일치로 빠진다.
@@ -138,13 +152,37 @@ function buildNickEditor(getCurrentNick, onCommit) {
   return nickWrap;
 }
 
-// 입력행: 이모지 버튼 + 메시지 input + 전송 버튼. 초기 상태는 비활성(연결 후 활성).
-function buildInputRow() {
+// 입력행: 이모지/첨부/(옵션)GIF 버튼 + 메시지 input + 전송 버튼. 초기 상태는 비활성(연결 후 활성).
+// showGifBtn=false 면 [gif] 버튼이 아예 빠진다(Giphy 키 미설정 시).
+// fileInput 은 hidden 으로 행에 포함 — DOM tree 가 깨끗하고 별도 컨테이너 없이 attachBtn 트리거.
+function buildInputRow({ showGifBtn }) {
   const emojiBtn = el("button", {
     class: "btn room-emoji-btn",
     text: "[^_^]",
     title: "Insert emoji",
     type: "button",
+  });
+  const attachBtn = el("button", {
+    class: "btn room-attach-btn",
+    text: "[img]",
+    title: "Attach image",
+    type: "button",
+    disabled: true,
+  });
+  const gifBtn = showGifBtn
+    ? el("button", {
+        class: "btn room-gif-btn",
+        text: "[gif]",
+        title: "Find a GIF",
+        type: "button",
+        disabled: true,
+      })
+    : null;
+  const fileInput = el("input", {
+    type: "file",
+    accept: "image/png,image/jpeg,image/gif,image/webp",
+    class: "room-file-input",
+    hidden: true,
   });
   const input = el("input", {
     class: "field room-input",
@@ -156,8 +194,306 @@ function buildInputRow() {
     dataset: { noDrag: "" },
   });
   const sendBtn = el("button", { class: "btn room-send", text: "[ SEND ]", disabled: true });
-  const inputRowEl = el("div", { class: "room-input-row", dataset: { noDrag: "" } }, [emojiBtn, input, sendBtn]);
-  return { inputRowEl, emojiBtn, input, sendBtn };
+  const rowChildren = [emojiBtn, attachBtn];
+  if (gifBtn) rowChildren.push(gifBtn);
+  rowChildren.push(input, sendBtn, fileInput);
+  const inputRowEl = el("div", { class: "room-input-row", dataset: { noDrag: "" } }, rowChildren);
+  return { inputRowEl, emojiBtn, attachBtn, gifBtn, fileInput, input, sendBtn };
+}
+
+// 첨부 미리보기 칩. 입력 행 위에 한 줄로 떠 있다가 첨부 해제 시 자동 숨김.
+// 상태:
+//   - uploading : 파일명 + "uploading…"     (X 비활성)
+//   - ready     : 파일명 + 크기 + [×]       (X 클릭 시 onRemove)
+//   - error     : 파일명 + 에러 메시지      (X 로 닫기)
+function buildAttachPreview({ onRemove }) {
+  const labelEl = el("span", { class: "room-attach-label", text: "" });
+  const removeBtn = el("button", {
+    class: "btn room-attach-remove",
+    text: "[×]",
+    title: "Remove",
+    type: "button",
+  });
+  removeBtn.addEventListener("click", () => onRemove());
+  const rootEl = el("div", { class: "room-attach-preview", hidden: true, dataset: { noDrag: "" } }, [
+    removeBtn,
+    labelEl,
+  ]);
+
+  function show({ filename, status, bytes, message }) {
+    let text = filename || "attachment";
+    if (status === "uploading") text += "  uploading…";
+    else if (status === "ready" && bytes != null) text += `  ${fmtBytes(bytes)}`;
+    else if (status === "error") text += `  ${message || "upload failed"}`;
+    labelEl.textContent = text;
+    rootEl.hidden = false;
+    rootEl.classList.toggle("room-attach-preview--error", status === "error");
+    removeBtn.disabled = status === "uploading";
+  }
+
+  function hide() {
+    rootEl.hidden = true;
+    labelEl.textContent = "";
+    rootEl.classList.remove("room-attach-preview--error");
+    removeBtn.disabled = false;
+  }
+
+  return { el: rootEl, show, hide };
+}
+
+// Giphy GIF picker. 검색 입력 + 결과 그리드 + 하단 attribution.
+// 이모지 picker 와 동일한 popup 패턴(absolute, input-row 위쪽). 셀 클릭 → onPick(gif) → picker 닫힘.
+function buildGifPicker(onPick) {
+  let visible = false;
+  let abortCtl = null;
+  let debounceTimer = null;
+  let lastQuery = null;
+  // 같은 검색어를 다시 조회하지 않도록 결과를 캐싱한다(key: 쿼리, "" = 트렌딩).
+  // Giphy beta 키의 시간당 100회 공유 한도를 아끼기 위함.
+  const cache = new Map();
+
+  const searchInput = el("input", {
+    class: "field room-gif-search",
+    type: "text",
+    placeholder: "search gifs…",
+    spellcheck: "false",
+    autocomplete: "off",
+    dataset: { noDrag: "" },
+  });
+  const gridEl = el("div", { class: "room-gif-grid", dataset: { noDrag: "" } });
+  const statusEl = el("div", { class: "room-gif-status", text: "", hidden: true });
+  // Giphy 약관(5A)은 공식 "Powered By GIPHY" 로고 마크를 눈에 띄게 표시하도록 요구한다 —
+  // 단순 텍스트 링크로는 약관 미준수. 로고(흰색 변형)는 styles.css 에 data URI 배경으로 박아 둔다
+  // (dev 서버가 실행 중 추가된 파일을 못 잡는 문제를 피하고, 정적 파일 서빙에 의존하지 않기 위함).
+  const attribImg = el("span", {
+    class: "room-gif-attrib-logo",
+    role: "img",
+    "aria-label": "Powered By GIPHY",
+  });
+  const attribEl = el("a", {
+    class: "room-gif-attrib",
+    href: "https://giphy.com",
+    target: "_blank",
+    rel: "noreferrer noopener",
+    dataset: { noDrag: "" },
+  }, [attribImg]);
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+    statusEl.hidden = !text;
+  }
+
+  function renderResults(results) {
+    gridEl.replaceChildren();
+    if (!results.length) {
+      setStatus("no results");
+      return;
+    }
+    setStatus("");
+    const frag = document.createDocumentFragment();
+    for (const gif of results) {
+      const thumb = el("img", {
+        class: "room-gif-thumb",
+        src: gif.thumbUrl,
+        alt: gif.title || "",
+        loading: "lazy",
+      });
+      const cell = el("button", {
+        class: "btn room-gif-cell",
+        type: "button",
+        title: gif.title || "",
+      }, [thumb]);
+      cell.addEventListener("click", () => {
+        hide();
+        onPick(gif);
+      });
+      frag.append(cell);
+    }
+    gridEl.append(frag);
+    gridEl.scrollTop = 0;
+  }
+
+  async function load(query) {
+    // 캐시 적중이면 네트워크 호출 없이 바로 렌더(진행 중 요청은 취소).
+    if (cache.has(query)) {
+      if (abortCtl) abortCtl.abort();
+      abortCtl = null;
+      renderResults(cache.get(query));
+      return;
+    }
+    if (abortCtl) abortCtl.abort();
+    abortCtl = new AbortController();
+    const signal = abortCtl.signal;
+    setStatus("loading…");
+    gridEl.replaceChildren();
+    try {
+      const results = query
+        ? await searchGifs(query, { signal })
+        : await featuredGifs({ signal });
+      if (signal.aborted) return;
+      cache.set(query, results);
+      renderResults(results);
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      // 오류로 끝난 쿼리는 캐시되지 않는다. lastQuery 도 비워, 같은 검색어를 다시 입력만 해도
+      // (input 핸들러의 q === lastQuery 가드에 막히지 않고) 재시도되게 한다.
+      lastQuery = null;
+      // 속도 제한(429): 자동 재시도하면 한도를 더 깎으므로 안내만 하고 멈춘다.
+      if (e?.name === "GiphyRateLimitError") {
+        setStatus("검색 한도 초과 — 잠시 후 다시 시도");
+        return;
+      }
+      console.error("giphy load failed:", e);
+      setStatus("error — try again");
+    }
+  }
+
+  function scheduleLoad(query) {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => load(query), GIF_SEARCH_DEBOUNCE_MS);
+  }
+
+  // --- 상황별 카테고리 바 (카오모지 sub-tab 과 동일 패턴) ---
+  const catBtns = new Map();
+  const categoriesEl = el("div", { class: "room-gif-cats", dataset: { noDrag: "" } });
+  for (const term of GIF_CATEGORIES) {
+    const btn = el("button", { class: "btn room-gif-cat", text: term, title: term, type: "button" });
+    btn.addEventListener("click", () => {
+      searchInput.value = term;
+      lastQuery = term;
+      setActiveCat(term);
+      clearTimeout(debounceTimer); // 카테고리는 즉시 로드(캐시 적중이면 네트워크 호출 없음)
+      load(term);
+    });
+    catBtns.set(term, btn);
+    categoriesEl.append(btn);
+  }
+  function setActiveCat(active) {
+    for (const [term, btn] of catBtns) btn.classList.toggle("active", term === active);
+  }
+
+  searchInput.addEventListener("input", () => {
+    const q = searchInput.value.trim();
+    if (q === lastQuery) return;
+    lastQuery = q;
+    setActiveCat(q); // 카테고리와 일치하면 강조, 아니면 강조 해제
+    // 1글자는 입력 도중으로 보고 호출을 보류한다(한도 절약). 빈 칸은 트렌딩으로 허용.
+    if (q.length === 1) return;
+    scheduleLoad(q);
+  });
+
+  const popupEl = el("div", { class: "room-gif-popup", hidden: true }, [
+    searchInput,
+    categoriesEl,
+    statusEl,
+    gridEl,
+    attribEl,
+  ]);
+
+  function show() {
+    if (visible) return;
+    visible = true;
+    popupEl.hidden = false;
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("keydown", onDocKeyDown, true);
+    if (!gridEl.children.length) load(searchInput.value.trim());
+    setTimeout(() => searchInput.focus(), 0);
+  }
+
+  function hide() {
+    if (!visible) return;
+    visible = false;
+    popupEl.hidden = true;
+    if (abortCtl) abortCtl.abort();
+    abortCtl = null;
+    clearTimeout(debounceTimer);
+    document.removeEventListener("mousedown", onDocMouseDown, true);
+    document.removeEventListener("keydown", onDocKeyDown, true);
+  }
+
+  function toggle() {
+    if (visible) hide();
+    else show();
+  }
+
+  function onDocMouseDown(e) {
+    if (popupEl.contains(e.target)) return;
+    if (e.target.closest?.(".room-gif-btn")) return;
+    hide();
+  }
+
+  function onDocKeyDown(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      hide();
+    }
+  }
+
+  function cleanup() {
+    if (visible) hide();
+    clearTimeout(debounceTimer);
+    if (abortCtl) abortCtl.abort();
+  }
+
+  return { popupEl, toggle, hide, cleanup };
+}
+
+// 이미지 lightbox. 채팅 영역(.room)을 가득 채우는 overlay 로 큰 이미지를 보여준다.
+// 닫기: ESC, 바깥(backdrop) 클릭, [X] 버튼 — 세 가지 모두 동작.
+// data-kind 를 root 에 박아 CSS 가 업로드 이미지(image)에만 216색 팔레트 필터를 걸도록 한다.
+function buildLightbox() {
+  let visible = false;
+
+  const imgEl = el("img", { class: "lightbox-image", alt: "" });
+  const closeBtn = el("button", {
+    class: "btn lightbox-close",
+    text: "[X]",
+    title: "Close",
+    type: "button",
+  });
+  const rootEl = el("div", {
+    class: "lightbox",
+    hidden: true,
+    dataset: { noDrag: "" },
+  }, [imgEl, closeBtn]);
+
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      hide();
+    }
+  }
+
+  function show(src, { kind } = {}) {
+    if (visible) return;
+    visible = true;
+    imgEl.src = src;
+    rootEl.dataset.kind = kind || "";
+    rootEl.hidden = false;
+    // capture phase 로 등록 — emoji/gif picker 의 ESC 핸들러보다 먼저 받는다.
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  function hide() {
+    if (!visible) return;
+    visible = false;
+    rootEl.hidden = true;
+    imgEl.removeAttribute("src");
+    rootEl.dataset.kind = "";
+    document.removeEventListener("keydown", onKey, true);
+  }
+
+  closeBtn.addEventListener("click", hide);
+  // backdrop 클릭은 닫기, 이미지/버튼 자체 클릭은 유지.
+  rootEl.addEventListener("click", (e) => {
+    if (e.target === rootEl) hide();
+  });
+
+  function cleanup() {
+    if (visible) hide();
+  }
+
+  return { el: rootEl, show, hide, cleanup };
 }
 
 // 카오모지 picker 팝업. 단일 패널: 검색 input → 카테고리 sub-tab → 스크롤 grid.
@@ -401,14 +737,40 @@ function renderMessageText(text) {
 // 메시지 한 줄을 DOM으로 변환. failed/mine 플래그로 클래스 결정.
 // displayName: nicknameMap(라이브 현재 이름) > sender_nickname snapshot(떠난 멤버 폴백).
 // 본인은 항상 "you" — 닉네임 변경 후에도 본인에게는 시각적 변화 없음.
+// attachment 가 있으면 이미지가 캡션과 별 줄에 표시된다(flex-wrap). aspect-ratio 를 미리 박아
+// 로딩 중에도 layout shift 가 없게 한다 — 스크롤 앵커가 깨지지 않는다.
 function renderMessageRow(m) {
   const who = el("span", { class: "msg-who", text: m.mine ? "you" : (m.displayName || m.nickname) });
-  const text = el("span", { class: "msg-text" }, renderMessageText(m.text));
   const time = el("span", { class: "msg-time", text: fmtTime(m.ts) });
+  const children = [who];
+  if (m.attachment) {
+    // data-kind 는 CSS 가 본인 업로드(image) 에만 retro-palette 필터를 걸기 위한 마커.
+    // gif_external 은 원본 색 그대로 보존 — 외부 GIF 는 이미 작가 의도된 톤이라 그대로 둔다.
+    const wrap = el("div", { class: "msg-image-wrap", dataset: { kind: m.attachment.kind || "" } });
+    if (m.attachment.width && m.attachment.height) {
+      wrap.style.aspectRatio = `${m.attachment.width} / ${m.attachment.height}`;
+    }
+    const img = el("img", {
+      class: "msg-image",
+      src: m.attachment.url,
+      alt: "",
+      loading: "lazy",
+    });
+    img.addEventListener("error", () => {
+      wrap.replaceChildren(el("span", { class: "msg-image-broken", text: "[ × broken ]" }));
+    });
+    wrap.append(img);
+    children.push(wrap);
+  }
+  if (m.text) {
+    children.push(el("span", { class: "msg-text" }, renderMessageText(m.text)));
+  }
+  children.push(time);
   let cls = "msg";
+  if (m.attachment) cls += " has-attach";
   if (m.mine) cls += " mine";
   if (m.failed) cls += " failed";
-  return el("div", { class: cls, dataset: { id: m.id }, title: m.failed ? "send failed" : null }, [who, text, time]);
+  return el("div", { class: cls, dataset: { id: m.id }, title: m.failed ? "send failed" : null }, children);
 }
 
 // 날짜 구분선 한 줄. dataset.id 를 "date-<yyyy-mm-dd>" 로 박아 스크롤 앵커(dataset.id 기준)에 자연스럽게
@@ -471,7 +833,8 @@ export const roomView = {
       nicknameEditor,
     });
     const list = el("div", { class: "room-list", dataset: { noDrag: "" } });
-    const { inputRowEl, emojiBtn, input, sendBtn } = buildInputRow();
+    const showGifBtn = isGiphyConfigured();
+    const { inputRowEl, emojiBtn, attachBtn, gifBtn, fileInput, input, sendBtn } = buildInputRow({ showGifBtn });
     // emoji picker 팝업은 input row 의 자식으로 append — input row 의 position: relative 가 앵커.
     const picker = buildEmojiPicker(input);
     inputRowEl.append(picker.popupEl);
@@ -479,7 +842,115 @@ export const roomView = {
       if (emojiBtn.disabled) return;
       picker.toggle();
     });
-    screenEl.append(el("div", { class: "room" }, [headerEl, list, inputRowEl]));
+
+    // --- 첨부/GIF 상태 ---
+    // 한 번에 하나의 첨부만 허용 — 업로드 완료 후 SEND 까지 보류한다. SEND 또는 [×] 로 해제.
+    let pendingAttachment = null;
+    // 미리보기에 보여 줄 첨부 라벨(파일명 또는 GIF 제목). 전송 실패 시 첨부 미리보기 복원에 쓴다.
+    let pendingAttachmentLabel = "";
+    // 업로드가 진행 중인 동안(아직 pendingAttachment 가 비어 있는 구간) 첨부·GIF 버튼을 함께 잠그는 플래그.
+    // 이게 없으면 업로드 도중 고른 GIF 의 staging 이 업로드 완료 시점에 조용히 덮어써진다.
+    let uploading = false;
+    const attachPreview = buildAttachPreview({
+      onRemove: () => {
+        pendingAttachment = null;
+        pendingAttachmentLabel = "";
+        fileInput.value = "";
+        attachPreview.hide();
+        syncAttachBtn();
+        syncGifBtn();
+      },
+    });
+    function syncAttachBtn() {
+      attachBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
+    }
+    function syncGifBtn() {
+      if (gifBtn) gifBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
+    }
+
+    // GIF picker 는 [gif] 버튼 표시 시에만 만든다.
+    // 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
+    let gifPicker = null;
+    function onGifPick(gif) {
+      // 한 번에 하나만 — 이미 첨부가 있거나 업로드 중이면 무시한다(파일 첨부 경로와 동일 정책).
+      // 평소엔 syncGifBtn 가 이 상태에서 [gif] 버튼을 잠그지만, 만약을 위한 방어 가드.
+      if (pendingAttachment || uploading) return;
+      // 외부(Giphy) GIF 는 업로드가 없어 바로 ready.
+      pendingAttachment = {
+        url: gif.gifUrl,
+        kind: "gif_external",
+        mime: "image/gif",
+        width: gif.gifW,
+        height: gif.gifH,
+        bytes: gif.gifBytes,
+      };
+      fileInput.value = "";
+      const label = gif.title && gif.title.trim() ? gif.title.trim() : "GIF";
+      pendingAttachmentLabel = label;
+      attachPreview.show({ filename: label, status: "ready", bytes: gif.gifBytes });
+      syncAttachBtn();
+      syncGifBtn();
+      input.focus();
+    }
+    if (gifBtn) {
+      gifPicker = buildGifPicker(onGifPick);
+      inputRowEl.append(gifPicker.popupEl);
+      gifBtn.addEventListener("click", () => {
+        if (gifBtn.disabled) return;
+        gifPicker.toggle();
+      });
+    }
+
+    // lightbox 는 .room 의 마지막 자식으로 → position: absolute + inset: 0 으로 자연스럽게 채움.
+    const lightbox = buildLightbox();
+    screenEl.append(el("div", { class: "room" }, [headerEl, list, attachPreview.el, inputRowEl, lightbox.el]));
+
+    // 메시지 리스트의 이미지 클릭을 위임 처리 — 메시지마다 핸들러를 달지 않는다.
+    // broken 폴백(span)이나 다른 영역 클릭은 .msg-image 매칭이 안 돼 자연스럽게 무시.
+    list.addEventListener("click", (e) => {
+      const img = e.target.closest?.(".msg-image");
+      if (!img) return;
+      const wrap = img.closest(".msg-image-wrap");
+      lightbox.show(img.src, { kind: wrap?.dataset.kind || "" });
+    });
+
+    // 파일 첨부: 클릭 → file picker → 즉시 업로드 → 완료 시 pendingAttachment 세팅. SEND 는 별도 클릭.
+    // 업로드 중에는 mount 가 갈아끼워질 수 있어 mountToken 가드로 늦은 setState 를 차단.
+    attachBtn.addEventListener("click", () => {
+      if (attachBtn.disabled) return;
+      if (pendingAttachment) return; // 한 번에 하나만 — 기존 첨부 제거 후 다시 클릭해야 한다.
+      fileInput.click();
+    });
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      if (pendingAttachment || uploading) return;
+      const filename = file.name;
+      uploading = true;
+      attachPreview.show({ filename, status: "uploading" });
+      // 업로드 중에는 첨부·GIF 버튼을 함께 잠근다 — 그 사이 GIF 를 골라도 staging 이 덮어써지지 않도록.
+      syncAttachBtn();
+      syncGifBtn();
+      try {
+        const att = await uploadAttachment(file, code);
+        if (mountToken !== myToken) return;
+        pendingAttachment = att;
+        pendingAttachmentLabel = filename;
+        attachPreview.show({ filename, status: "ready", bytes: att.bytes });
+      } catch (e) {
+        console.error("upload failed:", e);
+        if (mountToken === myToken) {
+          attachPreview.show({ filename, status: "error", message: e.message });
+        }
+      } finally {
+        uploading = false;
+        if (mountToken === myToken) {
+          syncAttachBtn();
+          syncGifBtn();
+        }
+        fileInput.value = "";
+      }
+    });
 
     // --- 상태 렌더링: 연결 상태 + 온라인 인원 ---
     let connState = "connecting";
@@ -521,7 +992,10 @@ export const roomView = {
       const ok = state === "connected";
       // 송신만 게이팅 — input/emoji picker 는 local 동작이므로 disconnect 중에도
       // 메시지 작성/카오모지 삽입을 허용해 재연결 대기 시간을 가릴 수 있게 한다.
+      // 첨부/GIF 는 외부 호출(업로드/Giphy)이라 연결 상태와 함께 토글한다.
       sendBtn.disabled = !ok;
+      syncAttachBtn();
+      syncGifBtn();
       renderStatus();
       if (ok) {
         if (hadConnectedOnce) backfill();
@@ -545,12 +1019,26 @@ export const roomView = {
       // 동일하게 막아 transport.send 가 실패→failed 메시지로 박히는 것을 방지.
       if (sendBtn.disabled) return;
       const text = input.value.trim();
-      if (!text) return;
+      // text 와 첨부 중 적어도 하나는 있어야 한다 — DB check constraint 와 동일 정책.
+      if (!text && !pendingAttachment) return;
       // send 시점에 라이브로 다시 읽는다 — [✎]로 닉네임을 바꾼 직후 보낸 메시지는
       // 새 이름으로 박제되어야 한다(snapshot fallback 도 새 이름으로 남음).
       const liveNick = getRoomNickname(code) || nickname;
       const msg = { id: crypto.randomUUID(), clientId, senderUid: userId, nickname: liveNick, text, ts: Date.now() };
+      if (pendingAttachment) msg.attachment = pendingAttachment;
+      // 전송 실패 시 되돌리기 위해 비우기 전에 보관해 둔다.
+      const prevText = input.value;
+      const prevAttachment = pendingAttachment;
+      const prevLabel = pendingAttachmentLabel;
       input.value = "";
+      // 첨부는 한 번 박은 후 즉시 비움 — 다음 메시지는 빈 상태에서 시작.
+      if (pendingAttachment) {
+        pendingAttachment = null;
+        pendingAttachmentLabel = "";
+        attachPreview.hide();
+        syncAttachBtn();
+        syncGifBtn();
+      }
       store.add(msg);
       try {
         await transport.send(msg);
@@ -558,6 +1046,16 @@ export const roomView = {
         console.error("send failed:", e);
         // 실패해도 메시지는 그대로 두되, failed 플래그로 시각적 피드백을 준다(사용자가 재전송 결정).
         store.update(msg.id, { failed: true });
+        // 비워 둔 입력/첨부를 되돌려 곧바로 다시 보낼 수 있게 한다.
+        // 단 그 사이 사용자가 새 입력/첨부를 시작했다면 덮어쓰지 않는다.
+        if (prevText && !input.value.trim()) input.value = prevText;
+        if (prevAttachment && !pendingAttachment) {
+          pendingAttachment = prevAttachment;
+          pendingAttachmentLabel = prevLabel;
+          attachPreview.show({ filename: prevLabel || "attachment", status: "ready", bytes: prevAttachment.bytes });
+          syncAttachBtn();
+          syncGifBtn();
+        }
       }
     }
     sendBtn.addEventListener("click", doSend);
@@ -586,6 +1084,8 @@ export const roomView = {
 
     this._cleanup = () => {
       picker.cleanup();
+      if (gifPicker) gifPicker.cleanup();
+      lightbox.cleanup();
       unsubStore();
       unsubStatus();
       unsubPres();

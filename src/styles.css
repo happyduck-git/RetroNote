@@ -632,6 +632,11 @@ body {
   font-size: calc(var(--computer-width) / 46);
   color: var(--crt-green);
   text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+  /* GIF 팝업(.room-gif-popup)과 동일한 오버플로 전략: 팝업 전체 높이에 화면 영역 기준 상한을 두고
+     내부 grid 가 스크롤을 담당한다. 평소 카오모지 팝업은 이 상한보다 낮아 보이지 않지만,
+     탭/서브탭이 늘어나도 모니터 화면 밖으로 삐져나가지 않도록 같은 안전장치를 맞춰 둔다. */
+  max-height: calc(var(--computer-width) / 3.2);
+  overflow-y: auto;
 }
 
 .room-emoji-popup[hidden] {
@@ -711,6 +716,270 @@ body {
   padding: 0.5em;
   text-align: center;
   width: 100%;
+}
+
+/* ===== 첨부 버튼 + GIF 버튼 (입력 행) ===== */
+/* emoji 버튼과 동일한 톤 — 같은 행에 자리 잡도록 position: static 강제. */
+.room-attach-btn,
+.room-gif-btn {
+  position: static;
+  font-size: calc(var(--computer-width) / 46);
+  flex: 0 0 auto;
+}
+
+/* ===== 첨부 미리보기 칩 (입력 행 위) ===== */
+/* 입력행과 같은 폭으로 자리 잡고, 첨부 없으면 hidden 으로 dom 자체 미점유. */
+.room-attach-preview[hidden] {
+  display: none;
+}
+.room-attach-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: calc(var(--computer-width) / 46);
+  color: var(--crt-green);
+  text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+  border: 1px dashed rgba(0, 255, 65, 0.45);
+  padding: 0.2em 0.4em;
+  flex: 0 0 auto;
+}
+.room-attach-remove {
+  position: static;
+  font-size: inherit;
+  flex: 0 0 auto;
+}
+.room-attach-label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.room-attach-preview--error {
+  border-color: rgba(255, 90, 90, 0.6);
+  color: #ff5a5a;
+  text-shadow: none;
+}
+
+/* ===== GIF picker 팝업 (emoji popup 과 동일한 absolute 배치) ===== */
+.room-gif-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 0.3em;
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid var(--crt-green);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.4);
+  padding: 0.5em 0.6em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  z-index: 9;
+  font-family: "VT323", "Galmuri11Adj", "Courier New", monospace;
+  font-size: calc(var(--computer-width) / 46);
+  color: var(--crt-green);
+  text-shadow: 0 0 4px rgba(0, 255, 65, 0.7);
+  /* 모니터의 화면 영역 높이(--screen-height-pct ≈ 39.65% × 화면높이 0.8995cw ≈ 0.357cw)를 넘지 않도록
+     팝업 전체 높이에 상한을 둔다. 모든 길이가 --computer-width 에 비례하므로 윈도우 크기와 무관하게 일정.
+     내부 grid 가 스크롤을 담당해, 어떤 크기에서도 팝업이 화면 위로 삐져나가지 않는다. */
+  max-height: calc(var(--computer-width) / 3.2);
+  overflow-y: auto;
+}
+.room-gif-popup[hidden] {
+  display: none;
+}
+
+.room-gif-search {
+  font-size: calc(var(--computer-width) / 46);
+  width: 100%;
+  padding: 0.15em 0.3em;
+}
+
+/* 상황별 카테고리 바 — 카오모지 sub-tab 과 동일 톤. */
+.room-gif-cats {
+  display: flex;
+  gap: 0.05em;
+  flex-wrap: wrap;
+  border-bottom: 1px solid rgba(0, 255, 65, 0.3);
+  padding-bottom: 0.25em;
+}
+.room-gif-cat {
+  position: static;
+  font-size: calc(var(--computer-width) / 50);
+  padding: 0.1em 0.35em;
+  opacity: 0.55;
+  text-shadow: none;
+  line-height: 1.1;
+}
+.room-gif-cat:hover {
+  opacity: 0.85;
+  color: var(--crt-green);
+}
+.room-gif-cat.active {
+  opacity: 1;
+  background: rgba(0, 255, 65, 0.12);
+}
+
+.room-gif-status {
+  opacity: 0.6;
+  font-size: calc(var(--computer-width) / 50);
+  text-align: center;
+  padding: 0.2em;
+}
+.room-gif-status[hidden] {
+  display: none;
+}
+
+/* 셀 그리드: 고정 높이 셀 + object-fit: cover 로 다양한 비율 GIF 가 같은 높이로 정돈된다.
+   max-height 는 emoji 그리드와 비슷한 비율로 잡아 윈도우 축소 시에도 화면을 안 잡아먹는다. */
+.room-gif-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4em, 1fr));
+  gap: 0.2em;
+  max-height: 6em;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+.room-gif-cell {
+  position: static;
+  background: transparent;
+  border: 1px solid rgba(0, 255, 65, 0.3);
+  padding: 0;
+  cursor: pointer;
+  height: 4em;
+  overflow: hidden;
+  display: block;
+  text-shadow: none;
+}
+.room-gif-cell:hover {
+  border-color: var(--crt-green);
+  box-shadow: 0 0 4px rgba(0, 255, 65, 0.5);
+}
+.room-gif-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Giphy 약관이 요구하는 공식 "Powered By GIPHY" 로고 마크. 텍스트가 아닌 이미지. */
+.room-gif-attrib {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  opacity: 0.6;
+  padding-top: 0.3em;
+  border-top: 1px solid rgba(0, 255, 65, 0.2);
+}
+.room-gif-attrib:hover {
+  opacity: 1;
+}
+.room-gif-attrib-logo {
+  /* 공식 "Powered By GIPHY" 흰색 마크를 data URI 로 직접 박는다 — 정적 파일 서빙/핫리로드에 의존 X. */
+  display: block;
+  height: calc(var(--computer-width) / 96);
+  /* 빈 span 이라 내용 기반 너비가 0 으로 무너진다 → 로고 비율(200x22)로 너비를 명시해야 배경이 보인다. */
+  width: calc(var(--computer-width) / 96 * 200 / 22);
+  flex: 0 0 auto;
+  aspect-ratio: 200 / 22;
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAWCAYAAACFbNPBAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAABRdJREFUeNrsW6+X2zgQdu8FhMXQbAPDmmNhG1jWwGX1sWXNf7A5dqxZVtbAY7dlYedlgSoLdJmhw8xy1nuf3ptTNZLl2N5Nq3lvXhNZHo2k+eZXtm/O53MU6OpoDp5q4xk4UFckARL4ajitOT/bqax5U3NseH/DvNNkjomkLrual4y+meGdzLI/0/wNnnH73ljkbSx6Nzrz34KLuAqSkULU/KXmG8fcSc0PmD/vWS+py4ea/635qea4x7VSZvzBEElVlH3wlPUDBYBcDzjetjDeIdOt9wBJXyT38sg82xnGtszcR59zCQB5/fSEqNCG1gPreuvjnVvQpuYTs+5K2/etYd53yGhMI09PplMJ1mlWc4LPOZjKqWouDPILPFMUg+X42BLClaykgY5TRobSKcFauvzK82wqonfC7FmtxclPLZHjEeDJSNGeEsP4g/GsbenZkMJMGFDuegJIiT3+w0SMDDaysaRWZV8A4TyDIKFVXvidwZALzCmAdGkUf2mGIuXvaz6Q8Ts82+JClo4Qm1q8sHDMySHnHWPwB1xA5Xk2e+xZnslnAhL5/R7ythaPqdMJ5yC0dQT0X8MIujZS/exjnIcO4LdRvyTv8itSOj2l3ODuJpemVm0Aogx9T76/g+FK4zrCUMZQRBBPs4SRfMa8BaLMkcxR/x7IBSRYs3TkmwWJHoKsPca6K+hYMvuIDIa/I3oswJHhPdfZKAeSYkzJXZELr5gi84bxlMJyR9uB0qkSa31hwNRn/ZPiPnUgfGTmf/NNrdoCpNLSpb/hsWJc6NgQBTKML4jB6ACZkUgS4/CnxOB1T++6uFzz/Esi17QPLqJQD30PvQ9MmNZlZoiAKrVSXaUFScuO5AxcHtvkINIGOb/osRaJLXdgq1POHYBTGvwnD0CVQwDEdkCcQUcEFDE+FwZQCJJLZ+S5aGA4Nm+VMHovDYCwgeYArz9l9phoxprA+AsSeWZk3crR9YkbAHfKFKNDddfWFlD2TVvch2v/f16iz6gFIKhhLcilTZlUJTIUpwLpxoy8d8D3Ofl8NMhzAYT+wkyL/NwBkMwBkNJhuGND7RJjvCKAuCPRt/I8/9MLdtOaev2vA+qUwpYmXadWXQFEXTrN7xMDIGba9yMByAzvFhinxfixYeHKRY4xKZRNBbkPzRwpHpWZkAbDkqx/JB2rY4v7mkSvn7YDrpU7Uq300gVGLRTaWcLqHIZPvePYYPAlAQONAAeSp7c1IgF5CeqGpIOLUJGtSe0SEcDHhohTeZy1iVYkNcsYo7h5IXA06RSdLCnPvIUT2DIAeewi1Rt1jGYFknutQzWG8RdaFJlpwFEdq5hJrzivsGfSuicYVApgV0y9YOpCpVqaptIiW8RKteh1ST7OvbfWAJIZUtChAXKCJ9823BfXgMg6rKnKLoSMPAFQOOY8QTHarSkADmFIs/LoxzZuRrpdtu4U10UqDUY2J7WNKwIUzLqZ5dBzRsbBEAULD4B8Nxj7LcCeMilwX38P9czoKMi9/3TkA5CmOXsWNeuBV4xMYemEiRY66u+59rFvcY4+9YyPfOmVTb8zfIAXpoY5RbTsq05ZRr8gjaJAr5lUpDClHTKyfAxH1C+FP1Z8/SSjwrcL3l+HIwwA+ZmpRHrj+/uCrF9+j4b50S6kWIFeHCQrACV11BrPSM12TDPh2bFWkzlNSTQcsz3LWzYQ8i428Cb8n/SrpWn0/1/uyxAtuqcAkECBLPSfAAMAD0//f+CYk/8AAAAASUVORK5CYII=");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* ===== 채팅 메시지의 이미지/GIF 본문 ===== */
+/* attachment 가 있는 메시지는 flex-wrap 으로 이미지를 별 줄에 배치. who/caption/time 은 같은 줄. */
+.msg.has-attach {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.msg.has-attach .msg-image-wrap {
+  flex-basis: 100%;
+  max-width: 31%;
+  margin: 0.15em 0;
+}
+.msg.has-attach.mine .msg-image-wrap {
+  margin-left: auto; /* 본인 메시지: 오른쪽 정렬 (who/time 의 order: 2 와 일관) */
+}
+
+.msg-image-wrap {
+  display: block;
+  border: 1px solid rgba(0, 255, 65, 0.4);
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.msg-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* 픽셀 톤 — 작은 GIF 가 위로 스케일될 때 청키하게 보이도록 한다. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: zoom-in;
+}
+
+/* 업로드 이미지(kind="image") 에만 NES 풍 27색 팔레트 양자화 적용.
+   필터 정의는 index.html 의 hidden SVG (#retro-palette) — 한 곳에서만 유지.
+   contrast/saturate 사전 보정으로 양자화 후 톤이 너무 칙칙해지는 것을 보완. */
+.msg-image-wrap[data-kind="image"] .msg-image {
+  filter: contrast(1.1) saturate(1.15) url(#retro-palette);
+}
+
+.msg-image-broken {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 3em;
+  color: #ff5a5a;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+/* ===== Lightbox: 채팅 이미지 클릭 시 .room 전체를 덮는 overlay ===== */
+.lightbox {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20; /* picker(9), modal-overlay(10) 위 */
+  cursor: zoom-out; /* backdrop 자체는 닫기 — zoom-out 으로 시그널 */
+}
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-image {
+  max-width: 95%;
+  max-height: 90%;
+  object-fit: contain;
+  /* 작게 저장한 이미지를 크게 띄울 때 청키한 픽셀감이 살아나도록. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border: 1px solid rgba(0, 255, 65, 0.6);
+  box-shadow: 0 0 12px rgba(0, 255, 65, 0.4);
+  cursor: default;
+}
+
+/* 업로드 이미지(kind="image") 에만 동일한 216색 팔레트 양자화 — 썸네일과 톤 일치. */
+.lightbox[data-kind="image"] .lightbox-image {
+  filter: contrast(1.1) saturate(1.15) url(#retro-palette);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  font-size: calc(var(--computer-width) / 46);
+  z-index: 21;
 }
 
 

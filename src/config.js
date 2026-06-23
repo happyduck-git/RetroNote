@@ -6,6 +6,8 @@
 //
 // 설정법: `cp src/config.local.example.js src/config.local.js` 후 값 입력.
 export let SUPABASE = { url: "", anonKey: "" };
+// CHAT.giphyApiKey 가 없으면 채팅의 [gif] 버튼은 숨겨진다. 채팅 자체는 정상 동작.
+export let CHAT = { giphyApiKey: "" };
 
 export function isChatConfigured() {
   return !!(SUPABASE.url && SUPABASE.anonKey);
@@ -17,6 +19,9 @@ export async function loadConfig() {
     const mod = await import("./config.local.js");
     if (mod?.SUPABASE?.url && mod?.SUPABASE?.anonKey) {
       SUPABASE = mod.SUPABASE;
+    }
+    if (mod?.CHAT?.giphyApiKey) {
+      CHAT = { ...CHAT, ...mod.CHAT };
     }
   } catch {
     // config.local.js 없음 → 채팅 비활성 (정상 동작)

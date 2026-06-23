@@ -18,6 +18,20 @@
     <script type="module" src="main.js" defer></script>
   </head>
   <body>
+    <!--
+      레트로 팔레트 SVG 필터 — 채널당 6단계 양자화로 216색(웹 세이프 팔레트)에 사상한다.
+      .msg-image-wrap[data-kind="image"] .msg-image 에서 filter: url(#retro-palette) 로 참조.
+      hidden + width/height 0 + position: absolute 로 레이아웃에 영향 0.
+    -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <filter id="retro-palette" color-interpolation-filters="sRGB">
+        <feComponentTransfer>
+          <feFuncR type="discrete" tableValues="0 0.2 0.4 0.6 0.8 1" />
+          <feFuncG type="discrete" tableValues="0 0.2 0.4 0.6 0.8 1" />
+          <feFuncB type="discrete" tableValues="0 0.2 0.4 0.6 0.8 1" />
+        </feComponentTransfer>
+      </filter>
+    </svg>
     <main class="app-container" id="app">
       <div class="screen-wrap" id="computer-wrap">
         <img
