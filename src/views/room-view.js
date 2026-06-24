@@ -152,32 +152,24 @@ function buildNickEditor(getCurrentNick, onCommit) {
   return nickWrap;
 }
 
-// 입력행: 이모지/첨부/(옵션)GIF 버튼 + 메시지 input + 전송 버튼. 초기 상태는 비활성(연결 후 활성).
-// showGifBtn=false 면 [gif] 버튼이 아예 빠진다(Giphy 키 미설정 시).
-// fileInput 은 hidden 으로 행에 포함 — DOM tree 가 깨끗하고 별도 컨테이너 없이 attachBtn 트리거.
-function buildInputRow({ showGifBtn }) {
+// 입력행: 이모지 버튼 + 첨부([+]) 버튼 + 메시지 input + 전송 버튼. 초기 상태는 비활성(연결 후 활성).
+// [img]·[gif] 를 한 줄에 늘어놓는 대신 [+] 하나로 일원화 — 클릭 시 작은 메뉴([img]/[gif])를 띄운다.
+// showGif=false(Giphy 키 미설정)면 GIF 가 없어 메뉴가 무의미하므로 [+] 대신 [img] 로 두고 곧장 파일 선택을 연다.
+// fileInput 은 hidden 으로 행에 포함 — DOM tree 가 깨끗하고 별도 컨테이너 없이 트리거.
+function buildInputRow({ showGif }) {
   const emojiBtn = el("button", {
     class: "btn room-emoji-btn",
     text: "[^_^]",
     title: "Insert emoji",
     type: "button",
   });
-  const attachBtn = el("button", {
-    class: "btn room-attach-btn",
-    text: "[img]",
-    title: "Attach image",
+  const mediaBtn = el("button", {
+    class: "btn room-media-btn",
+    text: showGif ? "[+]" : "[img]",
+    title: showGif ? "Attach image or GIF" : "Attach image",
     type: "button",
     disabled: true,
   });
-  const gifBtn = showGifBtn
-    ? el("button", {
-        class: "btn room-gif-btn",
-        text: "[gif]",
-        title: "Find a GIF",
-        type: "button",
-        disabled: true,
-      })
-    : null;
   const fileInput = el("input", {
     type: "file",
     accept: "image/png,image/jpeg,image/gif,image/webp",
@@ -194,11 +186,14 @@ function buildInputRow({ showGifBtn }) {
     dataset: { noDrag: "" },
   });
   const sendBtn = el("button", { class: "btn room-send", text: "[ SEND ]", disabled: true });
-  const rowChildren = [emojiBtn, attachBtn];
-  if (gifBtn) rowChildren.push(gifBtn);
-  rowChildren.push(input, sendBtn, fileInput);
-  const inputRowEl = el("div", { class: "room-input-row", dataset: { noDrag: "" } }, rowChildren);
-  return { inputRowEl, emojiBtn, attachBtn, gifBtn, fileInput, input, sendBtn };
+  const inputRowEl = el("div", { class: "room-input-row", dataset: { noDrag: "" } }, [
+    emojiBtn,
+    mediaBtn,
+    input,
+    sendBtn,
+    fileInput,
+  ]);
+  return { inputRowEl, emojiBtn, mediaBtn, fileInput, input, sendBtn };
 }
 
 // 첨부 미리보기 칩. 입력 행 위에 한 줄로 떠 있다가 첨부 해제 시 자동 숨김.
@@ -239,6 +234,75 @@ function buildAttachPreview({ onRemove }) {
   }
 
   return { el: rootEl, show, hide };
+}
+
+// 첨부 메뉴 팝업. [+] 버튼 클릭 시 input row 위쪽에 작게 떠서 [img]/[gif] 두 항목을 보여 준다.
+// 이모지/GIF picker 와 동일한 popup 패턴(absolute, 바깥 클릭·ESC 로 닫힘). 항목 클릭 → 메뉴 닫고 콜백.
+function buildAttachMenu({ onPickImage, onPickGif }) {
+  let visible = false;
+
+  const imgItem = el("button", {
+    class: "btn room-attach-menu-item",
+    text: "[img]",
+    title: "Attach image",
+    type: "button",
+  });
+  const gifItem = el("button", {
+    class: "btn room-attach-menu-item",
+    text: "[gif]",
+    title: "Find a GIF",
+    type: "button",
+  });
+  imgItem.addEventListener("click", () => {
+    hide();
+    onPickImage();
+  });
+  gifItem.addEventListener("click", () => {
+    hide();
+    onPickGif();
+  });
+
+  const popupEl = el("div", { class: "room-attach-menu", hidden: true }, [imgItem, gifItem]);
+
+  function show() {
+    if (visible) return;
+    visible = true;
+    popupEl.hidden = false;
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("keydown", onDocKeyDown, true);
+  }
+
+  function hide() {
+    if (!visible) return;
+    visible = false;
+    popupEl.hidden = true;
+    document.removeEventListener("mousedown", onDocMouseDown, true);
+    document.removeEventListener("keydown", onDocKeyDown, true);
+  }
+
+  function toggle() {
+    if (visible) hide();
+    else show();
+  }
+
+  function onDocMouseDown(e) {
+    if (popupEl.contains(e.target)) return;
+    if (e.target.closest?.(".room-media-btn")) return; // 트리거 버튼은 자체 토글에 맡긴다
+    hide();
+  }
+
+  function onDocKeyDown(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      hide();
+    }
+  }
+
+  function cleanup() {
+    if (visible) hide();
+  }
+
+  return { popupEl, toggle, hide, cleanup };
 }
 
 // Giphy GIF picker. 검색 입력 + 결과 그리드 + 하단 attribution.
@@ -418,7 +482,6 @@ function buildGifPicker(onPick) {
 
   function onDocMouseDown(e) {
     if (popupEl.contains(e.target)) return;
-    if (e.target.closest?.(".room-gif-btn")) return;
     hide();
   }
 
@@ -833,8 +896,8 @@ export const roomView = {
       nicknameEditor,
     });
     const list = el("div", { class: "room-list", dataset: { noDrag: "" } });
-    const showGifBtn = isGiphyConfigured();
-    const { inputRowEl, emojiBtn, attachBtn, gifBtn, fileInput, input, sendBtn } = buildInputRow({ showGifBtn });
+    const showGif = isGiphyConfigured();
+    const { inputRowEl, emojiBtn, mediaBtn, fileInput, input, sendBtn } = buildInputRow({ showGif });
     // emoji picker 팝업은 input row 의 자식으로 append — input row 의 position: relative 가 앵커.
     const picker = buildEmojiPicker(input);
     inputRowEl.append(picker.popupEl);
@@ -848,7 +911,7 @@ export const roomView = {
     let pendingAttachment = null;
     // 미리보기에 보여 줄 첨부 라벨(파일명 또는 GIF 제목). 전송 실패 시 첨부 미리보기 복원에 쓴다.
     let pendingAttachmentLabel = "";
-    // 업로드가 진행 중인 동안(아직 pendingAttachment 가 비어 있는 구간) 첨부·GIF 버튼을 함께 잠그는 플래그.
+    // 업로드가 진행 중인 동안(아직 pendingAttachment 가 비어 있는 구간) [+] 버튼을 잠그는 플래그.
     // 이게 없으면 업로드 도중 고른 GIF 의 staging 이 업로드 완료 시점에 조용히 덮어써진다.
     let uploading = false;
     const attachPreview = buildAttachPreview({
@@ -857,23 +920,19 @@ export const roomView = {
         pendingAttachmentLabel = "";
         fileInput.value = "";
         attachPreview.hide();
-        syncAttachBtn();
-        syncGifBtn();
+        syncMediaBtn();
       },
     });
-    function syncAttachBtn() {
-      attachBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
-    }
-    function syncGifBtn() {
-      if (gifBtn) gifBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
+    // 첨부([+]) 버튼은 연결 전·첨부 보류 중·업로드 중에는 비활성 — 그 사이 메뉴를 못 열게 한다.
+    function syncMediaBtn() {
+      mediaBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
     }
 
-    // GIF picker 는 [gif] 버튼 표시 시에만 만든다.
-    // 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
-    let gifPicker = null;
+    // GIF picker·첨부 메뉴는 Giphy 키가 있을 때(showGif)만 만든다.
+    // GIF 셀 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
     function onGifPick(gif) {
       // 한 번에 하나만 — 이미 첨부가 있거나 업로드 중이면 무시한다(파일 첨부 경로와 동일 정책).
-      // 평소엔 syncGifBtn 가 이 상태에서 [gif] 버튼을 잠그지만, 만약을 위한 방어 가드.
+      // 평소엔 syncMediaBtn 가 이 상태에서 [+] 버튼을 잠그지만, 만약을 위한 방어 가드.
       if (pendingAttachment || uploading) return;
       // 외부(Giphy) GIF 는 업로드가 없어 바로 ready.
       pendingAttachment = {
@@ -888,18 +947,21 @@ export const roomView = {
       const label = gif.title && gif.title.trim() ? gif.title.trim() : "GIF";
       pendingAttachmentLabel = label;
       attachPreview.show({ filename: label, status: "ready", bytes: gif.gifBytes });
-      syncAttachBtn();
-      syncGifBtn();
+      syncMediaBtn();
       input.focus();
     }
-    if (gifBtn) {
-      gifPicker = buildGifPicker(onGifPick);
-      inputRowEl.append(gifPicker.popupEl);
-      gifBtn.addEventListener("click", () => {
-        if (gifBtn.disabled) return;
-        gifPicker.toggle();
-      });
-    }
+    // [img] 선택 → 파일 선택창, [gif] 선택 → Giphy picker. 메뉴는 항목 클릭 시 스스로 닫힌다.
+    const gifPicker = showGif ? buildGifPicker(onGifPick) : null;
+    const attachMenu = showGif
+      ? buildAttachMenu({
+          onPickImage: () => {
+            if (!pendingAttachment) fileInput.click();
+          },
+          onPickGif: () => gifPicker.show(),
+        })
+      : null;
+    if (gifPicker) inputRowEl.append(gifPicker.popupEl);
+    if (attachMenu) inputRowEl.append(attachMenu.popupEl);
 
     // lightbox 는 .room 의 마지막 자식으로 → position: absolute + inset: 0 으로 자연스럽게 채움.
     const lightbox = buildLightbox();
@@ -914,12 +976,13 @@ export const roomView = {
       lightbox.show(img.src, { kind: wrap?.dataset.kind || "" });
     });
 
-    // 파일 첨부: 클릭 → file picker → 즉시 업로드 → 완료 시 pendingAttachment 세팅. SEND 는 별도 클릭.
+    // [+] 클릭: 첨부 메뉴([img]/[gif]) 토글. Giphy 키가 없으면(showGif=false) 메뉴 없이 곧장 파일 선택.
     // 업로드 중에는 mount 가 갈아끼워질 수 있어 mountToken 가드로 늦은 setState 를 차단.
-    attachBtn.addEventListener("click", () => {
-      if (attachBtn.disabled) return;
+    mediaBtn.addEventListener("click", () => {
+      if (mediaBtn.disabled) return;
       if (pendingAttachment) return; // 한 번에 하나만 — 기존 첨부 제거 후 다시 클릭해야 한다.
-      fileInput.click();
+      if (attachMenu) attachMenu.toggle();
+      else fileInput.click();
     });
     fileInput.addEventListener("change", async () => {
       const file = fileInput.files?.[0];
@@ -928,9 +991,8 @@ export const roomView = {
       const filename = file.name;
       uploading = true;
       attachPreview.show({ filename, status: "uploading" });
-      // 업로드 중에는 첨부·GIF 버튼을 함께 잠근다 — 그 사이 GIF 를 골라도 staging 이 덮어써지지 않도록.
-      syncAttachBtn();
-      syncGifBtn();
+      // 업로드 중에는 [+] 버튼을 잠근다 — 그 사이 메뉴로 GIF 를 골라도 staging 이 덮어써지지 않도록.
+      syncMediaBtn();
       try {
         const att = await uploadAttachment(file, code);
         if (mountToken !== myToken) return;
@@ -945,8 +1007,7 @@ export const roomView = {
       } finally {
         uploading = false;
         if (mountToken === myToken) {
-          syncAttachBtn();
-          syncGifBtn();
+          syncMediaBtn();
         }
         fileInput.value = "";
       }
@@ -992,10 +1053,9 @@ export const roomView = {
       const ok = state === "connected";
       // 송신만 게이팅 — input/emoji picker 는 local 동작이므로 disconnect 중에도
       // 메시지 작성/카오모지 삽입을 허용해 재연결 대기 시간을 가릴 수 있게 한다.
-      // 첨부/GIF 는 외부 호출(업로드/Giphy)이라 연결 상태와 함께 토글한다.
+      // 첨부([+])는 외부 호출(업로드/Giphy)이라 연결 상태와 함께 토글한다.
       sendBtn.disabled = !ok;
-      syncAttachBtn();
-      syncGifBtn();
+      syncMediaBtn();
       renderStatus();
       if (ok) {
         if (hadConnectedOnce) backfill();
@@ -1036,8 +1096,7 @@ export const roomView = {
         pendingAttachment = null;
         pendingAttachmentLabel = "";
         attachPreview.hide();
-        syncAttachBtn();
-        syncGifBtn();
+        syncMediaBtn();
       }
       store.add(msg);
       try {
@@ -1053,8 +1112,7 @@ export const roomView = {
           pendingAttachment = prevAttachment;
           pendingAttachmentLabel = prevLabel;
           attachPreview.show({ filename: prevLabel || "attachment", status: "ready", bytes: prevAttachment.bytes });
-          syncAttachBtn();
-          syncGifBtn();
+          syncMediaBtn();
         }
       }
     }
@@ -1084,6 +1142,7 @@ export const roomView = {
 
     this._cleanup = () => {
       picker.cleanup();
+      if (attachMenu) attachMenu.cleanup();
       if (gifPicker) gifPicker.cleanup();
       lightbox.cleanup();
       unsubStore();
