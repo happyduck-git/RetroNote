@@ -18,15 +18,11 @@ function spy(impl) {
 
 // 기본 deps 빌더 — 각 테스트가 필요한 부분만 override.
 function buildDeps(overrides = {}) {
-  const store = {
-    updateNickname: spy(),
-  };
   const transport = {
     track: spy(),
   };
   const entry = {
     userId: "me-uid",
-    store,
     transport,
   };
   const rooms = new Map([[VALID_CODE, entry]]);
@@ -40,7 +36,6 @@ function buildDeps(overrides = {}) {
     updateMembershipNickname: spy(() => Promise.resolve()),
     // 테스트가 살펴볼 수 있도록 부속물도 노출.
     _entry: entry,
-    _store: store,
     _transport: transport,
     _storageNick: storageNick,
   };
@@ -54,7 +49,6 @@ describe("changeRoomNickname validation", () => {
     await assert.rejects(() => change("toolongcode", "alice"), /INVALID_CODE/);
     assert.equal(deps.setRoomNickname.calls.length, 0);
     assert.equal(deps.updateMembershipNickname.calls.length, 0);
-    assert.equal(deps._store.updateNickname.calls.length, 0);
     assert.equal(deps._transport.track.calls.length, 0);
   });
 
@@ -96,7 +90,6 @@ describe("changeRoomNickname no-op", () => {
     await change(VALID_CODE, "alice");
     assert.equal(deps.setRoomNickname.calls.length, 0);
     assert.equal(deps.updateMembershipNickname.calls.length, 0);
-    assert.equal(deps._store.updateNickname.calls.length, 0);
     assert.equal(deps._transport.track.calls.length, 0);
   });
 
@@ -110,13 +103,12 @@ describe("changeRoomNickname no-op", () => {
 });
 
 describe("changeRoomNickname 정상 flow", () => {
-  test("4단계 모두 호출: storage → store.updateNickname → transport.track → server", async () => {
+  test("3단계 모두 호출: storage → transport.track → server", async () => {
     const deps = buildDeps();
     const change = makeChangeRoomNickname(deps);
     await change(VALID_CODE, "alice-new");
 
     assert.deepEqual(deps.setRoomNickname.calls, [[VALID_CODE, "alice-new"]]);
-    assert.deepEqual(deps._store.updateNickname.calls, [["me-uid", "alice-new"]]);
     assert.deepEqual(deps._transport.track.calls, [[{ nickname: "alice-new" }]]);
     assert.deepEqual(deps.updateMembershipNickname.calls, [[VALID_CODE, "alice-new"]]);
   });
@@ -125,18 +117,16 @@ describe("changeRoomNickname 정상 flow", () => {
     const order = [];
     const deps = buildDeps();
     deps.setRoomNickname = spy(() => order.push("storage"));
-    deps._store.updateNickname = spy(() => order.push("store"));
     deps._transport.track = spy(() => order.push("track"));
     deps.updateMembershipNickname = spy(() => {
       order.push("server");
       return Promise.resolve();
     });
-    deps._entry.store.updateNickname = deps._store.updateNickname;
     deps._entry.transport.track = deps._transport.track;
 
     const change = makeChangeRoomNickname(deps);
     await change(VALID_CODE, "alice-new");
-    assert.deepEqual(order, ["storage", "store", "track", "server"]);
+    assert.deepEqual(order, ["storage", "track", "server"]);
   });
 
   test("입력 양끝 공백은 trim 되어 저장", async () => {
@@ -167,7 +157,6 @@ describe("changeRoomNickname 서버 실패", () => {
       await assert.rejects(() => change(VALID_CODE, "alice-new"), /network/);
       // 로컬 작업은 성공적으로 수행됨(낙관적 update)
       assert.equal(deps.setRoomNickname.calls.length, 1);
-      assert.equal(deps._store.updateNickname.calls.length, 1);
       assert.equal(deps._transport.track.calls.length, 1);
       // 서버 호출은 1회 시도됨
       assert.equal(deps.updateMembershipNickname.calls.length, 1);

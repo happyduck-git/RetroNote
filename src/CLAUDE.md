@@ -16,7 +16,7 @@ Chat only activates if Supabase keys are present. `config.js` ships with empty d
 
 ## Message store (memory only; Postgres is source of truth)
 
-`chat/message-store.js` holds the displayed list in memory and **dedups by `id`** (because the sender receives its own INSERT echo). Ownership (`mine`) is decided by `senderUid` vs the logged-in `auth.uid()`, **not** by `clientId` (so the same account on another device shows as "you"). Display name resolution order: live `nicknameMap` → latest snapshot per sender → envelope `nickname`. Changing a nickname mutates one map entry and re-renders all of that sender's past messages without touching the `messages` table.
+`chat/message-store.js` holds the displayed list in memory and **dedups by `id`** (because the sender receives its own INSERT echo). Ownership (`mine`) is decided by `senderUid` vs the logged-in `auth.uid()`, **not** by `clientId` (so the same account on another device shows as "you"). Display name is each message's own frozen `sender_nickname` (the envelope `nickname`) — never re-resolved. Changing a nickname does **not** touch past messages; the new name only applies to messages sent afterward (anonymization, issue #49). The `messages` table is never rewritten.
 
 ## Session & cross-device sync
 

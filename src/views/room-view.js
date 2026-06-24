@@ -798,7 +798,7 @@ function renderMessageText(text) {
 }
 
 // 메시지 한 줄을 DOM으로 변환. failed/mine 플래그로 클래스 결정.
-// displayName: nicknameMap(라이브 현재 이름) > sender_nickname snapshot(떠난 멤버 폴백).
+// displayName: 각 메시지의 박제값(sender_nickname) 그대로 — 닉네임을 바꿔도 과거 메시지는 불변.
 // 본인은 항상 "you" — 닉네임 변경 후에도 본인에게는 시각적 변화 없음.
 // attachment 가 있으면 이미지가 캡션과 별 줄에 표시된다(flex-wrap). aspect-ratio 를 미리 박아
 // 로딩 중에도 layout shift 가 없게 한다 — 스크롤 앵커가 깨지지 않는다.
