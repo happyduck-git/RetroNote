@@ -35,7 +35,7 @@ import {
   syncRoomsFromServer,
   removeSavedRoom,
 } from "../../src/chat/session.js";
-import { fetchMemberships, updateMembershipAlias, fetchRoomMembers } from "../../src/chat/message-history.js";
+import { fetchMemberships, updateMembershipAlias, fetchRoomMembers, insertMessage, ensureMembership } from "../../src/chat/message-history.js";
 import { normalize } from "../../src/chat/room-code.js";
 
 const CODE = "ABC234";
@@ -143,6 +143,52 @@ describe("메시지 송수신 (Realtime 왕복)", () => {
     } finally {
       closeRoom(CODE);
     }
+  });
+});
+
+describe("메시지 INSERT 멤버십 정책 (0006)", () => {
+  // 비멤버는 가입하지 않은 방에 메시지를 INSERT 할 수 없다(0006 정책).
+  // insertMessage 는 RLS WITH CHECK 위반 시 supabase-js error 를 throw 한다.
+  test("비멤버는 text 메시지를 INSERT 할 수 없다", async () => {
+    const uid = await freshUser(); // 멤버십 없음 (openRoom/ensureMembership 호출 안 함)
+    const msg = {
+      id: crypto.randomUUID(),
+      clientId: "cid-x",
+      senderUid: uid,
+      nickname: "Intruder",
+      text: "uninvited",
+      ts: Date.now(),
+    };
+    await assert.rejects(() => insertMessage(msg, CODE), "비멤버 INSERT 는 RLS 로 거부되어야 함");
+  });
+
+  test("비멤버는 attachment-only 메시지도 INSERT 할 수 없다", async () => {
+    const uid = await freshUser();
+    const msg = {
+      id: crypto.randomUUID(),
+      clientId: "cid-x",
+      senderUid: uid,
+      nickname: "Intruder",
+      text: null,
+      ts: Date.now(),
+      // 0005 의 attachment_complete check 를 통과하는 최소 유효 값(bytes 는 NULL 허용).
+      attachment: { url: "https://example.com/a.png", kind: "image", mime: "image/png", width: 200, height: 150, bytes: null },
+    };
+    await assert.rejects(() => insertMessage(msg, CODE), "비멤버 attachment INSERT 는 RLS 로 거부되어야 함");
+  });
+
+  test("멤버는 메시지를 INSERT 할 수 있다 (회귀)", async () => {
+    const uid = await freshUser();
+    await ensureMembership(CODE); // 멤버십 생성 → is_room_member(CODE) = true
+    const msg = {
+      id: crypto.randomUUID(),
+      clientId: "cid-a",
+      senderUid: uid,
+      nickname: "Alice",
+      text: "hello",
+      ts: Date.now(),
+    };
+    await assert.doesNotReject(() => insertMessage(msg, CODE), "멤버 INSERT 는 성공해야 함");
   });
 });
 
