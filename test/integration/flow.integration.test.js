@@ -23,7 +23,7 @@ import {
 } from "./harness.mjs";
 
 // 앱 모듈(테스트 대상). 설정/셰임은 before() 에서 준비되므로 호출 시점엔 준비 완료.
-import { signUp, signOut, getCurrentUserId } from "../../src/auth/auth.js";
+import { signUp, signOut, getCurrentUserId, getClient } from "../../src/auth/auth.js";
 import {
   openRoom,
   closeRoom,
@@ -68,6 +68,36 @@ async function joinAndSave(code) {
   await openRoom(code);
   saveRoom(code);
   closeRoom(code);
+}
+
+// 관리자 권한(RLS 우회)으로 메시지 row 를 직접 INSERT — Realtime postgres_changes 를 발생시킨다.
+// 알림 구독의 RLS 격리만 검증하려는 목적이라, 작성자 RLS(0006)는 우회하고 WAL 이벤트만 만든다.
+async function adminInsertMessage(code, { id, senderUid, text }) {
+  await pool.query(
+    `insert into public.messages (id, room_code, sender_uid, sender_client_id, sender_nickname, text, ts)
+     values ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, normalize(code), senderUid, "cid-test", "Member", text, Date.now()],
+  );
+}
+
+// messages 테이블 INSERT 를 필터 없이 구독한다(= message-notifier 의 앱 수준 채널과 동일 형태).
+// RLS 가 구독자별로 평가되므로, 멤버만 자기 방 메시지를 받아야 한다.
+//  - ready   : 구독 완료(SUBSCRIBED) 시 resolve
+//  - hit     : predicate 를 만족하는 INSERT 도착 시 resolve(true)
+//  - cleanup : 채널 제거
+function subscribeMessagesUnfiltered(client, name, predicate) {
+  let resolveHit, resolveReady;
+  const hit = new Promise((res) => { resolveHit = res; });
+  const ready = new Promise((res) => { resolveReady = res; });
+  const channel = client
+    .channel(name)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "messages" },
+      (payload) => { if (predicate(payload.new)) resolveHit(true); },
+    );
+  channel.subscribe((status) => { if (status === "SUBSCRIBED") resolveReady(true); });
+  return { ready, hit, cleanup: () => client.removeChannel(channel) };
 }
 
 // --- 수명주기 ---------------------------------------------------------------
@@ -269,5 +299,53 @@ describe("방 제거", () => {
 
     await syncRoomsFromServer();
     assert.equal(getSavedRooms().length, 0);
+  });
+});
+
+// 앱 수준 알림 서비스(message-notifier)는 messages 를 "필터 없이" 한 채널로 구독하고,
+// 내 방인지/내 메시지인지는 클라이언트측에서 거른다. 이 설계의 안전성은 "필터 없는 구독이
+// 비멤버에게 남의 방 메시지를 wire 로 흘리지 않는다"(= Realtime 이 SELECT RLS 를 구독자별로 적용)에
+// 달려 있다. 이 격리를 여기서 직접 증명한다. 실패하면 방별 room_code=eq 채널 폴백이 필요하다.
+describe("앱 수준 알림 구독 RLS 격리 (issue #52)", () => {
+  test("멤버는 필터 없는 구독으로 자기 방 메시지를 받는다", { timeout: 25000 }, async () => {
+    const uid = await freshUser();
+    await ensureMembership(CODE); // 멤버십 생성 → SELECT RLS 통과 대상
+    const client = await getClient();
+    const id = crypto.randomUUID();
+    const sub = subscribeMessagesUnfiltered(client, "notify-member", (row) => row.id === id);
+    try {
+      await sub.ready;
+      await adminInsertMessage(CODE, { id, senderUid: uid, text: "hello-member" });
+      await assert.doesNotReject(
+        Promise.race([
+          sub.hit,
+          new Promise((_, rej) => setTimeout(() => rej(new Error("realtime timeout")), 18000)),
+        ]),
+        "멤버는 자기 방 메시지를 수신해야 함",
+      );
+    } finally {
+      await sub.cleanup();
+    }
+  });
+
+  test("비멤버는 필터 없는 구독으로 남의 방 메시지를 받지 못한다", { timeout: 25000 }, async () => {
+    const memberUid = await freshUser();
+    await ensureMembership(CODE); // 메시지 작성자(멤버)
+    await signOut();
+    resetDevice();
+    await freshUser(); // 사용자 C — CODE 비멤버
+    const client = await getClient();
+    const id = crypto.randomUUID();
+    const sub = subscribeMessagesUnfiltered(client, "notify-nonmember", (row) => row.id === id);
+    try {
+      await sub.ready;
+      await adminInsertMessage(CODE, { id, senderUid: memberUid, text: "secret" });
+      // 일정 시간 내 도착하지 않아야(= 격리 성공) 통과. 도착하면 hit 가 먼저 resolve 되어 실패.
+      const noDelivery = new Promise((resolve) => setTimeout(() => resolve("no-delivery"), 6000));
+      const outcome = await Promise.race([sub.hit.then(() => "delivered"), noDelivery]);
+      assert.equal(outcome, "no-delivery", "비멤버는 남의 방 메시지를 받으면 안 됨(RLS 격리)");
+    } finally {
+      await sub.cleanup();
+    }
   });
 });
