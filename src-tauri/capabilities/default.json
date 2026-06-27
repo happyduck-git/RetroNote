@@ -29,6 +29,8 @@
       "allow": [{ "url": "https://*" }, { "url": "http://*" }]
     },
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "core:window:allow-set-badge-count",
+    "core:window:allow-set-overlay-icon"
   ]
 }

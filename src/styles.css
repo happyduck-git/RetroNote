@@ -1046,6 +1046,15 @@ body {
   flex: 0 0 auto;
 }
 
+/* 방별 안 읽음 — 방 코드 앞 초록 점(●). 채팅방 online 표시와 같은 글로우 톤. */
+.saved-room-unread {
+  flex: 0 0 auto;
+  color: #00ff41;
+  font-size: calc(var(--computer-width) / 48);
+  line-height: 1;
+  text-shadow: 0 0 5px rgba(0, 255, 65, 0.8);
+}
+
 .saved-room-alias {
   flex: 1 1 auto;
   opacity: 0.85;

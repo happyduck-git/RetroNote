@@ -77,6 +77,21 @@ export async function resetSchema(pool) {
       throw new Error(`마이그레이션 적용 실패: ${f}\n${e.message}`);
     }
   }
+  // Realtime(postgres_changes) 활성화: 운영에선 Supabase 대시보드가 messages 를 supabase_realtime
+  // publication 에 넣어 두지만, 마이그레이션은 publication 을 관리하지 않는다. 위에서 테이블을
+  // drop/재생성하면 publication 에서 빠져 postgres_changes 가 안 뜨므로, 운영과 동일하게 다시 넣는다.
+  await pool.query(`
+    do $$
+    begin
+      if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime'
+          and schemaname = 'public' and tablename = 'messages'
+      ) then
+        alter publication supabase_realtime add table public.messages;
+      end if;
+    end $$;
+  `);
 }
 
 // 테스트 간 데이터 격리: 모든 사용자 삭제(FK on delete cascade 로 멤버십/메시지도 정리).
