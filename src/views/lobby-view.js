@@ -4,6 +4,7 @@ import { confirmDialog, alertDialog } from "../core/confirm.js";
 import { playKey } from "../platform/sound.js";
 import { generate6, isValid, normalize, CODE_LENGTH } from "../chat/room-code.js";
 import { getSavedRooms, setRoomAlias, removeSavedRoom, canAddRoom, MAX_SAVED_ROOMS, getRoomNickname, syncRoomsFromServer } from "../chat/session.js";
+import { messageNotifier } from "../chat/message-notifier.js";
 
 // 방에 들어가기 직전 닉네임 게이트: 방별 닉네임이 없으면 nickname 뷰로, 있으면 바로 room으로.
 function enterRoom(ctx, code) {
@@ -72,18 +73,34 @@ export const lobbyView = {
         if (added && savedSection.isConnected) renderSavedRooms(savedSection, ctx);
       })
       .catch((e) => console.error("room sync failed:", e));
+
+    // 방별 안 읽은 표시가 바뀌면(새 메시지 도착/방 입장) 목록을 다시 그린다.
+    this._unsub = messageNotifier.subscribe(() => {
+      if (savedSection.isConnected) renderSavedRooms(savedSection, ctx);
+    });
+  },
+
+  unmount() {
+    this._unsub?.();
+    this._unsub = null;
   },
 };
 
 function renderSavedRooms(container, ctx) {
   container.replaceChildren();
   const rooms = getSavedRooms();
+  // 방별 안 읽음 — 방 코드 앞에 초록 점(●)으로 표시(0 이면 표시 안 함). online 표시와 같은 점.
+  const unread = messageNotifier.getUnreadByRoom();
   if (rooms.length === 0) return;
 
   const header = el("div", { class: "saved-rooms-header", text: "— CHAT ROOMS —" });
   container.append(header);
 
   for (const room of rooms) {
+    const count = unread.get(room.code) || 0;
+    const unreadEl = count > 0
+      ? el("span", { class: "saved-room-unread", text: "●", title: `${count} new` })
+      : null;
     const codeEl = el("span", { class: "saved-room-code", text: room.code });
     const aliasEl = room.alias
       ? el("span", { class: "saved-room-alias", text: room.alias })
@@ -132,7 +149,7 @@ function renderSavedRooms(container, ctx) {
           enterRoom(ctx, room.code);
         },
       },
-      [codeEl, aliasEl, actions],
+      unreadEl ? [unreadEl, codeEl, aliasEl, actions] : [codeEl, aliasEl, actions],
     );
     container.append(row);
   }

@@ -5,6 +5,7 @@
 import { el } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
 import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom, changeRoomNickname } from "../chat/session.js";
+import { messageNotifier } from "../chat/message-notifier.js";
 import { withDateDividers } from "../chat/date-divider.js";
 import { uploadAttachment } from "../chat/attachment.js";
 import { isGiphyConfigured } from "../chat/giphy.js";
@@ -57,6 +58,8 @@ export const roomView = {
     }
     this._code = code;
     saveRoom(code);
+    // 이 방에 입장 → 안 읽은 표시(로비 배지 + 도크 합계)를 그 방만큼 지운다.
+    messageNotifier.clearRoom(code);
     const { transport, store, userId, backfill } = entry;
 
     // openRoom 의 "로컬·서버 다름 → 서버 우선" 분기가 localStorage 를 갱신했을 수 있다.
@@ -245,6 +248,9 @@ export const roomView = {
       if (document.visibilityState === "visible") backfill();
     };
     document.addEventListener("visibilitychange", onVisibility);
+    // 이 방을 보는 중 앱이 다시 포커스되면(다른 앱 갔다 옴) 그 사이 쌓인 이 방의 안 읽은 표시를 지운다.
+    const onWinFocus = () => messageNotifier.clearRoom(code);
+    window.addEventListener("focus", onWinFocus);
     const unsubPres = transport.on("presence", ({ count }) => {
       onlineCount = count;
       renderStatus();
@@ -330,6 +336,7 @@ export const roomView = {
       ro.disconnect();
       window.removeEventListener("resize", restoreScroll);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onWinFocus);
     };
   },
 
