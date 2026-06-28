@@ -70,6 +70,31 @@ async function joinAndSave(code) {
   closeRoom(code);
 }
 
+// 갓 기동한 로컬 realtime 컨테이너는 (a) 아직 websocket 을 못 받거나(connect 실패),
+// (b) 떠 있어도 첫 구독의 postgres_changes echo 를 놓친다(cold-start). 둘 다 echo 왕복이
+// 성공할 때까지 재시도해 컨테이너를 데운 뒤 실제 테스트를 돌린다. 운영과 무관한 로컬 한정
+// 현상이라 테스트 계층에서만 흡수한다(db/CLAUDE.md "Realtime" 참고).
+async function warmUpRealtime() {
+  const uid = await freshUser();
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    const entry = await openRoom("WARMUP");
+    try {
+      await entry.transport.connect("WARMUP", { nickname: "warm", clientId: entry.clientId });
+      const id = crypto.randomUUID();
+      const got = new Promise((res) => {
+        const unsub = entry.store.subscribe((m) => { if (m.some((x) => x.id === id)) { unsub(); res(true); } });
+        setTimeout(() => { unsub(); res(false); }, 2500);
+      });
+      await entry.transport.send({ id, clientId: entry.clientId, senderUid: uid, nickname: "warm", text: "warmup", ts: Date.now() });
+      if (await got) { closeRoom("WARMUP"); return; } // echo 도착 = 컨테이너 준비 완료
+    } catch { /* 컨테이너가 아직 안 뜸(connect 실패) → 잠시 후 재시도 */ }
+    closeRoom("WARMUP");
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  console.error("[warmup] realtime 준비 확인 실패 — 실제 테스트에서 재검증됨");
+}
+
 // --- 수명주기 ---------------------------------------------------------------
 before(async () => {
   const env = resolveEnv();
@@ -77,6 +102,7 @@ before(async () => {
   await configureApp(env);
   pool = adminPool(env.dbUrl);
   await resetSchema(pool); // db/migrations 전체를 순서대로 적용(파일 자체 검증 포함)
+  await warmUpRealtime(); // cold-start 흡수: 첫 실행도 realtime 왕복이 안정적으로 통과하도록 데운다
 });
 
 after(async () => {

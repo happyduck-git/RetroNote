@@ -13,8 +13,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "db", "migrations");
 
 // --- 브라우저 전역 셰임 -----------------------------------------------------
-// supabase-js 는 세션을 메모리에도 들고 있어, localStorage 만 비워도 in-memory 세션은 유지된다.
-// → "같은 계정, 새 기기"(앱 로컬 데이터만 비어 있는 상태)를 정확히 모사한다.
 class MemoryStorage {
   constructor() { this.map = new Map(); }
   getItem(k) { return this.map.has(k) ? this.map.get(k) : null; }
@@ -29,9 +27,18 @@ export function installBrowserGlobals() {
   if (!globalThis.localStorage) globalThis.localStorage = new MemoryStorage();
 }
 
-// "다른 기기" 모사: 앱이 쓰는 device-local 저장소를 통째로 비운다(저장된 방/닉네임/alias/CID/세션토큰).
+// "다른 기기" 모사: 앱의 device-local 데이터(저장된 방/닉네임/alias/CID)만 비운다.
+// supabase 세션 키(sb-*)는 보존한다 — 클라이언트가 persistSession:true + storage:localStorage 라
+// 세션은 localStorage 에 저장되며, 이를 지우면 "새 기기"가 아니라 "로그아웃"이 되어 서버 재조회가
+// 불가능해진다("같은 계정, 새 기기" = 로그인 유지 + 앱 로컬만 비어 있는 상태).
 export function resetDevice() {
-  globalThis.localStorage?.clear?.();
+  const store = globalThis.localStorage;
+  if (!store) return;
+  const keys = [];
+  for (let i = 0; i < store.length; i++) keys.push(store.key(i));
+  for (const k of keys) {
+    if (k && !k.startsWith("sb-")) store.removeItem(k);
+  }
 }
 
 // --- 앱 설정 주입 -----------------------------------------------------------
