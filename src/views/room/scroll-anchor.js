@@ -23,9 +23,14 @@ export function createScrollAnchor(list) {
     }
     const listTop = list.getBoundingClientRect().top;
     for (const row of list.children) {
+      // 날짜 구분선(dataset.id="date-…", message-row.js 의 renderDateDivider 규약)은 앵커로
+      // 잡지 않는다. 같은 날짜 과거를 prepend 하면 withDateDividers 가 구분선을 더 위로 옮겨,
+      // 구분선에 건 앵커는 화면을 아래로 점프시킨다. 메시지 행에 걸면 그 메시지는 제자리에 남는다.
+      const id = row.dataset.id;
+      if (!id || id.startsWith("date-")) continue;
       const rect = row.getBoundingClientRect();
       if (rect.bottom > listTop + 1) {
-        anchorId = row.dataset.id || null;
+        anchorId = id;
         anchorOffset = rect.top - listTop;
         return;
       }
