@@ -150,14 +150,38 @@ export async function fetchMyLastNicknamesByRoom() {
   return out;
 }
 
-export async function fetchMessages(code, sinceTs) {
+// opts: number(legacy sinceTs) 또는 { sinceTs, beforeTs, beforeId, limit }.
+//  - sinceTs: ts >= sinceTs (firstJoinedAt 바닥 / 재연결 백필의 catch-up 하한)
+//  - beforeTs/beforeId: 무한 스크롤로 과거 페이지를 더 받을 때의 keyset 커서 상한.
+//      ts 는 Date.now() ms 라 충돌 가능 → 단순 ts < X 로 자르면 같은 ts 메시지가 누락된다(#56 재발).
+//      대신 (ts < beforeTs) OR (ts = beforeTs AND id < beforeId) 로 (ts,id) 전순서를 따라 페이징.
+//  - limit: 지정 시 최신순(ts desc, id desc)으로 limit 건만 받아 ts 오름차순으로 뒤집어 반환.
+// limit 가 핵심: PostgREST 의 행 수 상한(max_rows, 기본 1000) 때문에 limit 없이 큰 방을 그냥
+// 오름차순으로 fetch 하면 가장 오래된 1000 건만 돌아오고 최신 메시지가 잘린다(#56).
+// 초기 진입/과거 페이지는 limit 로 "최신 N 건"을 받고, 재연결 백필만 number(sinceTs) 경로로
+// limit 없이 catch-up 한다(끊긴 동안의 갭은 보통 작아 max_rows 에 닿지 않는다 — 향후 별도 보완 대상).
+export async function fetchMessages(code, opts = {}) {
+  const { sinceTs, beforeTs, beforeId, limit } =
+    typeof opts === "number" ? { sinceTs: opts } : (opts || {});
   const client = await getClient();
-  const { data, error } = await client
-    .from("messages")
-    .select("*")
-    .eq("room_code", code)
-    .gte("ts", sinceTs)
-    .order("ts", { ascending: true });
+  let q = client.from("messages").select("*").eq("room_code", code);
+  if (sinceTs != null) q = q.gte("ts", sinceTs);
+  if (beforeTs != null) {
+    // keyset 커서: id 가 함께 있으면 같은 ts 동률을 id 로 가른다. id 없으면 단순 ts 상한.
+    q = beforeId != null
+      ? q.or(`ts.lt.${beforeTs},and(ts.eq.${beforeTs},id.lt.${beforeId})`)
+      : q.lt("ts", beforeTs);
+  }
+  if (limit != null) {
+    const { data, error } = await q
+      .order("ts", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    // 호출 측은 항상 ts 오름차순을 기대하므로 뒤집어 반환.
+    return data.map(rowToMsg).reverse();
+  }
+  const { data, error } = await q.order("ts", { ascending: true });
   if (error) throw error;
   return data.map(rowToMsg);
 }
