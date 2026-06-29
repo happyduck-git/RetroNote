@@ -4,6 +4,7 @@ import { createTransport } from "./transport.js";
 import { createMessageStore } from "./message-store.js";
 import { ensureMembership, fetchMessages, deleteMembership, fetchMemberships, updateMembershipNickname, updateMembershipAlias, fetchMyLastNicknamesByRoom, fetchRoomMembers } from "./message-history.js";
 import { createBackfiller } from "./backfill.js";
+import { createHistoryLoader } from "./history-loader.js";
 import { normalize, isValid } from "./room-code.js";
 import { getCurrentUserId } from "../auth/auth.js";
 
@@ -17,6 +18,9 @@ const NICK_MAX = 16;
 
 // 저장된 방(로비 목록) 상한. 초과 시 사용자가 명시적으로 삭제하도록 alert.
 export const MAX_SAVED_ROOMS = 10;
+// 방 입장/과거 스크롤 시 한 번에 가져오는 메시지 수. fetchMessages 의 limit 으로 쓰여
+// PostgREST max_rows(기본 1000) 잘림(#56)을 피한다. 뷰포트(~15-30행)를 여유 있게 채우는 크기.
+export const HISTORY_PAGE_SIZE = 50;
 // 동시 활성 방 상한(메모리). UI 상 한 번에 한 방만 열리지만 안전장치로 유지.
 const MAX_ROOMS = 1;
 
@@ -150,14 +154,19 @@ export async function openRoom(rawCode) {
   });
   store.setNicknameMap(nicknameMap);
 
-  const history = await fetchMessages(code, firstJoinedAt);
+  // 최신 HISTORY_PAGE_SIZE 건만 시드한다(limit → max_rows 잘림 회피). 그 위의 과거는
+  // room-view 가 위로 스크롤할 때 loadOlder 로 firstJoinedAt 바닥까지 이어 받는다.
+  const history = await fetchMessages(code, { sinceTs: firstJoinedAt, limit: HISTORY_PAGE_SIZE });
   store.seed(history);
 
   const backfill = createBackfiller({ store, fetchMessages, firstJoinedAt, code });
+  const loadOlder = createHistoryLoader({ store, fetchMessages, firstJoinedAt, code, pageSize: HISTORY_PAGE_SIZE });
+  // 시드가 페이지를 꽉 채웠으면 위에 더 있을 수 있다(무한 스크롤 진입 조건의 초기값).
+  const hasMoreHistory = history.length >= HISTORY_PAGE_SIZE;
 
   // firstJoinedAt은 재연결/visibility 복귀 시 갭필(fetchMessages) 의 fallback sinceTs로 사용.
   // userId 는 changeRoomNickname 에서 nicknameMap 자기 엔트리 갱신용 + room-view 에서 senderUid 채움용.
-  const entry = { code, clientId, userId, transport, store, firstJoinedAt, backfill };
+  const entry = { code, clientId, userId, transport, store, firstJoinedAt, backfill, loadOlder, hasMoreHistory };
   rooms.set(code, entry);
   return entry;
 }

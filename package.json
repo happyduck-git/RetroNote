@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "test": "node --test src/chat/backfill.test.js src/chat/message-store.test.js src/chat/change-nickname.test.js src/chat/linkify.test.js src/chat/date-divider.test.js src/core/note-name.test.js src/views/md-decorations.test.js src/platform/updater.test.js",
+    "test": "node --test src/chat/backfill.test.js src/chat/history-loader.test.js src/chat/message-store.test.js src/chat/change-nickname.test.js src/chat/linkify.test.js src/chat/date-divider.test.js src/core/note-name.test.js src/views/md-decorations.test.js src/platform/updater.test.js",
     "test:integration": "node --test test/integration/*.test.js",
     "db:start": "supabase start",
     "db:stop": "supabase stop"

@@ -513,6 +513,16 @@ body {
   padding: 0.15em 0;
 }
 
+/* 과거 로딩 인디케이터: .room-list 바로 위 형제. flex 컬럼 레이아웃을 안 깨도록 고정 높이. */
+.room-history-hint {
+  flex: 0 0 auto;
+  text-align: center;
+  opacity: 0.5;
+  font-size: 0.8em;
+  padding: 0.2em 0;
+  user-select: none;
+}
+
 .msg {
   display: flex;
   gap: 0.35em;

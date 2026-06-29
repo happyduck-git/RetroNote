@@ -4,7 +4,7 @@
 import { el, pad2 } from "../core/dom.js";
 import { playKey } from "../platform/sound.js";
 import { openExternal } from "../platform/opener.js";
-import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom, changeRoomNickname } from "../chat/session.js";
+import { getRoomNickname, getClientId, openRoom, closeRoom, saveRoom, changeRoomNickname, HISTORY_PAGE_SIZE } from "../chat/session.js";
 import { KAOMOJI_GROUPS } from "../chat/kaomoji-data.js";
 import { tokenizeMessage } from "../chat/linkify.js";
 import { withDateDividers } from "../chat/date-divider.js";
@@ -13,6 +13,10 @@ import { searchGifs, featuredGifs, isGiphyConfigured } from "../chat/giphy.js";
 
 const COPY_FEEDBACK_MS = 1200;
 const NEAR_BOTTOM_PX = 40;
+// 위로 이만큼 이내로 스크롤되면 과거 페이지를 미리 당겨 온다(끝까지 닿기 전에 끊김 없이 이어지도록).
+const NEAR_TOP_PX = 80;
+// 뷰포트 미충족 시 초기 채움 루프의 하드 상한(키 큰 메시지 대비 무한 루프 차단).
+const FILL_MAX_ROUNDS = 5;
 // Giphy beta 키는 시간당 100회(앱 전체 공유) 한도라 호출을 아껴야 한다 — 디바운스를 넉넉히.
 const GIF_SEARCH_DEBOUNCE_MS = 600;
 
@@ -688,9 +692,14 @@ function createScrollAnchor(list) {
     }
     const listTop = list.getBoundingClientRect().top;
     for (const row of list.children) {
+      // 날짜 구분선(dataset.id="date-…")은 앵커로 잡지 않는다. 같은 날짜 과거를 prepend 하면
+      // withDateDividers 가 구분선을 더 위로 옮겨, 구분선에 건 앵커는 화면을 아래로 점프시킨다.
+      // 메시지 행에 걸면 그 메시지는 제자리에 남고 추가분은 화면 밖 위로 쌓인다.
+      const id = row.dataset.id;
+      if (!id || id.startsWith("date-")) continue;
       const rect = row.getBoundingClientRect();
       if (rect.bottom > listTop + 1) {
-        anchorId = row.dataset.id || null;
+        anchorId = id;
         anchorOffset = rect.top - listTop;
         return;
       }
@@ -816,7 +825,10 @@ export const roomView = {
     }
     this._code = code;
     saveRoom(code);
-    const { transport, store, userId, backfill } = entry;
+    const { transport, store, userId, backfill, loadOlder } = entry;
+    // 위쪽 무한 스크롤 상태(뷰 로컬). hasMore 는 entry 초기값에서 출발하고 loadOlder/resumeTrim 이 갱신.
+    let loadingOlder = false;
+    let hasMoreHistory = entry.hasMoreHistory;
 
     // openRoom 의 "로컬·서버 다름 → 서버 우선" 분기가 localStorage 를 갱신했을 수 있다.
     // 다른 기기에서 닉네임을 바꾸고 이 기기에서 재입장한 케이스에 새 이름으로 헤더가 떠야 한다.
@@ -833,6 +845,9 @@ export const roomView = {
       nicknameEditor,
     });
     const list = el("div", { class: "room-list", dataset: { noDrag: "" } });
+    // 과거 로딩 인디케이터: list 의 형제(바로 위)로 둔다. list 내부에 넣으면 매 emit 의
+    // replaceChildren 에 지워진다. loadingOlder 동안만 보이고, 바닥에 닿으면 "처음입니다" 표시.
+    const historyHint = el("div", { class: "room-history-hint", hidden: true });
     const showGifBtn = isGiphyConfigured();
     const { inputRowEl, emojiBtn, attachBtn, gifBtn, fileInput, input, sendBtn } = buildInputRow({ showGifBtn });
     // emoji picker 팝업은 input row 의 자식으로 append — input row 의 position: relative 가 앵커.
@@ -903,7 +918,7 @@ export const roomView = {
 
     // lightbox 는 .room 의 마지막 자식으로 → position: absolute + inset: 0 으로 자연스럽게 채움.
     const lightbox = buildLightbox();
-    screenEl.append(el("div", { class: "room" }, [headerEl, list, attachPreview.el, inputRowEl, lightbox.el]));
+    screenEl.append(el("div", { class: "room" }, [headerEl, historyHint, list, attachPreview.el, inputRowEl, lightbox.el]));
 
     // 메시지 리스트의 이미지 클릭을 위임 처리 — 메시지마다 핸들러를 달지 않는다.
     // broken 폴백(span)이나 다른 영역 클릭은 .msg-image 매칭이 안 돼 자연스럽게 무시.
@@ -974,12 +989,75 @@ export const roomView = {
         ...rows.map((item) => (item.divider ? renderDateDivider(item.date) : renderMessageRow(item))),
       );
       restoreScroll();
+      // 치수(attachment_w/h)가 없는 첨부는 aspect-ratio 예약이 안 돼 lazy 로드 시 늦게 커진다.
+      // ResizeObserver(list) 는 내부 scrollHeight 증가에 안 깨므로, prepend 된 이미지가 위에서
+      // 로드되면 앵커가 밀린다 → 각 이미지 load 시 앵커를 한 번 재보정.
+      for (const img of list.querySelectorAll(".msg-image")) {
+        if (img.complete) continue;
+        img.addEventListener("load", restoreScroll, { once: true });
+      }
     });
     const ro = new ResizeObserver(restoreScroll);
     ro.observe(list);
     // ResizeObserver 백업: Tauri 그립 드래그 시 .room-list 박스 변동이 한 박자 늦거나
     // 누락되는 경우를 대비해 window resize에도 보정한다.
     window.addEventListener("resize", restoreScroll);
+
+    // --- 위쪽 무한 스크롤: 최상단 근처로 가면 과거 페이지를 이어 로드 ---
+    function updateHistoryHint() {
+      historyHint.hidden = !loadingOlder;
+      if (loadingOlder) historyHint.textContent = "loading older…";
+    }
+    async function maybeLoadOlder() {
+      if (mountToken !== myToken) return;
+      if (loadingOlder || !hasMoreHistory) return;
+      if (list.scrollHeight <= list.clientHeight) return; // 오버플로 없음 → 스크롤 불가
+      if (list.scrollTop > NEAR_TOP_PX) return;
+      loadingOlder = true;
+      updateHistoryHint();
+      // prepend 전에 현재 최상단 메시지를 앵커로 고정 → restoreScroll 이 제자리 유지(점프 방지).
+      captureAnchor();
+      try {
+        const { hasMore } = await loadOlder();
+        if (mountToken !== myToken) return;
+        hasMoreHistory = hasMore;
+      } finally {
+        loadingOlder = false;
+        if (mountToken === myToken) updateHistoryHint();
+      }
+    }
+    // 바닥 근처로 돌아오면 유예했던 트림을 정상화. 트림이 과거를 버렸다면 위에 다시 더 있으므로
+    // hasMore 를 복원해 재-fetch 가능하게 한다(stale false 로 도달 불가가 되는 것 방지).
+    function maybeResumeTrim() {
+      const distFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+      if (distFromBottom >= NEAR_BOTTOM_PX) return;
+      const removed = store.resumeTrim();
+      if (removed > 0) hasMoreHistory = true;
+    }
+    const onListScroll = () => { maybeLoadOlder(); maybeResumeTrim(); };
+    list.addEventListener("scroll", onListScroll, { passive: true });
+
+    // 시드가 뷰포트를 못 채우면(메시지가 적거나 키가 작아 스크롤이 안 생기면) 사용자가 위로
+    // 스크롤할 방법이 없다 → 오버플로가 생기거나 바닥에 닿을 때까지 몇 번 당겨 채운다(하드 상한).
+    async function fillViewport() {
+      for (let i = 0; i < FILL_MAX_ROUNDS; i++) {
+        if (mountToken !== myToken || !hasMoreHistory) break;
+        if (list.scrollHeight > list.clientHeight) break;
+        loadingOlder = true;
+        updateHistoryHint();
+        let res;
+        try {
+          res = await loadOlder();
+        } finally {
+          loadingOlder = false;
+        }
+        if (mountToken !== myToken) break;
+        hasMoreHistory = res.hasMore;
+        if (res.newlyAdded === 0) break;
+      }
+      if (mountToken === myToken) updateHistoryHint();
+    }
+    fillViewport();
 
     // --- backfill: 재연결/visibility 복귀 시 그동안 놓친 메시지를 보충 ---
     // backfill 인스턴스는 openRoom 에서 미리 만들어져 entry 에 들어 있다(테스트 가능성/단일 책임).
@@ -1090,6 +1168,7 @@ export const roomView = {
       unsubStatus();
       unsubPres();
       list.removeEventListener("scroll", captureAnchor);
+      list.removeEventListener("scroll", onListScroll);
       ro.disconnect();
       window.removeEventListener("resize", restoreScroll);
       document.removeEventListener("visibilitychange", onVisibility);
