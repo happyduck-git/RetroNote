@@ -3,6 +3,7 @@ import { loadConfig, isChatConfigured } from "./config.js";
 import { createRouter } from "./core/router.js";
 import { initWindowControls } from "./platform/window-controls.js";
 import { initSound } from "./platform/sound.js";
+import { initScreenMode } from "./platform/screen-mode.js";
 import { checkForUpdate } from "./platform/updater.js";
 import { homeView } from "./views/home-view.js";
 import { noteView } from "./views/note-view.js";
@@ -46,6 +47,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const container = document.getElementById("computer-wrap");
   initWindowControls(container);
   initSound();
+  initScreenMode();
   // 자동 업데이트 확인은 채팅 설정/라우팅과 무관하게 1회. await 하지 않아(fire-and-forget)
   // 네트워크 지연이 앱 시작/뷰 렌더를 막지 않는다. 내부에서 모든 실패를 흡수(best-effort).
   checkForUpdate();

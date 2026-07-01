@@ -1,13 +1,15 @@
 // 창 제어: 리사이즈 그립, 드래그 이동, Cmd/Ctrl ±/0 줌, 핀치 줌, 닫기 버튼, 종횡비 클램프.
 // Tauri 외 환경(브라우저)에서는 window API가 없으므로 창 제어를 통째로 건너뛴다.
+import { isLargeScreen, onScreenModeChange } from "./screen-mode.js";
+
 const tauriWindow = window.__TAURI__?.window;
 const getCurrentWindow = tauriWindow?.getCurrentWindow;
 const LogicalSize = tauriWindow?.LogicalSize;
 
 const WIN_MIN = { w: 400, h: 360 };
-const WIN_MAX = { w: 1400, h: 1260 };
+const WIN_MAX = { w: 2000, h: 1600 }; // tauri.conf.json 의 maxWidth/maxHeight 와 동기화 필수
 const WIN_DEFAULT = { w: 800, h: 720 };
-const ASPECT = 2170 / 1952; // computer.png 비율
+const ASPECT = 2170 / 1952; // computer.png 비율(기본 모드 전용)
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -34,9 +36,19 @@ async function applyAspectClampedWidth(targetW) {
   await getCurrentWindow().setSize(new LogicalSize(Math.round(newW), Math.round(newH)));
 }
 
+// 큰 화면 모드: 종횡비를 무시하고 가로/세로를 각각 독립적으로 MIN/MAX 클램프.
+async function applyFreeSize(targetW, targetH) {
+  const w = clamp(targetW, WIN_MIN.w, WIN_MAX.w);
+  const h = clamp(targetH, WIN_MIN.h, WIN_MAX.h);
+  await getCurrentWindow().setSize(new LogicalSize(Math.round(w), Math.round(h)));
+}
+
 async function scaleWindowBy(factor) {
   const cur = await currentLogicalSize();
-  await applyAspectClampedWidth(cur.w * factor);
+  // 큰 화면 모드에선 현재(자유) 비율을 유지한 채 양축 비례 확대/축소.
+  // 기본 모드에선 모니터 종횡비로 폭 기준 클램프.
+  if (isLargeScreen()) await applyFreeSize(cur.w * factor, cur.h * factor);
+  else await applyAspectClampedWidth(cur.w * factor);
 }
 
 async function resetWindowSize() {
@@ -45,6 +57,14 @@ async function resetWindowSize() {
 
 export function initWindowControls(container) {
   if (!tauriWindow) return; // 브라우저 등 Tauri 외 환경: 창 제어 비활성(채팅 테스트용)
+
+  // 화면 모드 전환: 진입 시엔 창 크기를 바꾸지 않는다(프레임만 전환 → 콘텐츠가 같은 창 안에서 커짐).
+  // 기본 모드로 복귀할 때만, 자유 리사이즈됐을 수 있는 창을 모니터 종횡비로 다시 맞춘다.
+  onScreenModeChange(async (large) => {
+    if (large) return;
+    const cur = await currentLogicalSize();
+    await applyAspectClampedWidth(cur.w);
+  });
 
   const closeBtn = document.getElementById("close-btn");
   if (closeBtn) {
@@ -64,19 +84,25 @@ export function initWindowControls(container) {
 
       const start = await currentLogicalSize();
       const startX = e.screenX;
-      let pendingW = null;
+      const startY = e.screenY;
+      const large = isLargeScreen(); // 드래그 중 모드는 불변 → 시작 시 1회 판정
+      let pending = null;
       let rafId = null;
 
       const apply = () => {
         rafId = null;
-        if (pendingW == null) return;
-        const targetW = pendingW;
-        pendingW = null;
-        applyAspectClampedWidth(targetW);
+        if (!pending) return;
+        const p = pending;
+        pending = null;
+        if (large) applyFreeSize(p.w, p.h); // 자유 비율(가로·세로 독립)
+        else applyAspectClampedWidth(p.w); // 기본 모드: 폭 기준 종횡비 유지
       };
 
       const onMove = (ev) => {
-        pendingW = start.w + (ev.screenX - startX);
+        pending = {
+          w: start.w + (ev.screenX - startX),
+          h: start.h + (ev.screenY - startY),
+        };
         if (rafId == null) rafId = requestAnimationFrame(apply);
       };
       const onUp = () => {

@@ -25,6 +25,14 @@
   --screen-height-pct: 39.65%;
 
   --crt-green: #00ff41;
+
+  /* 큰 화면 모드 프레임 — computer.png 플라스틱 베젤을 픽셀 샘플링한 톤 + 베벨용 명암 */
+  --frame-color: #f9e0c7; /* 베젤 면(기본) */
+  --frame-hi: #ffe9d4; /* 밝은 하이라이트(위/왼) */
+  --frame-edge: #dcbf9d; /* 그림자 모서리(아래/오른) */
+  --frame-shadow: #907e6a; /* 외곽선/깊은 그림자 */
+  --screen-lip: #5a4a38; /* 화면 둘레 오목한 어두운 립 */
+  --screen-dark: #060a06; /* 큰 화면 모드 CRT 바탕(근-검정) */
 }
 
 * {
@@ -211,6 +219,23 @@ body {
 
 .save-btn:active {
   transform: translateX(-50%) translateY(1px);
+}
+
+/* 좌상단 화면 모드 토글 — 우상단 top-controls 와 대칭으로 화면 좌상단 코너에 배치.
+   .top-controls .btn 과 동일한 크기 메트릭 사용. */
+.screen-mode-btn {
+  top: calc(var(--screen-top-pct) - 2.5%);
+  left: calc(var(--screen-left-pct) - 0.625%);
+  font-size: calc(var(--computer-width) / 40);
+  padding: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8em;
+  height: 1.2em;
+  box-sizing: content-box;
+  z-index: 2;
 }
 
 /* 우하단 리사이즈 그립 */
@@ -1116,5 +1141,66 @@ body {
 
 .modal-cancel {
   opacity: 0.8;
+}
+
+/* ===== 큰 화면 모드 =====
+   모니터 이미지를 숨기고 창을 꽉 채우는 레트로 입체 베젤 프레임으로 전환.
+   body.large-screen 에서 --screen-*-pct / --computer-width 를 재정의하면
+   상속을 타고 모든 뷰(.menu/.form/.lobby/.note-list/.room, top-controls, 저장버튼 등)가
+   자동으로 프레임을 채우도록 재배치·재스케일된다. */
+body.large-screen {
+  --screen-top-pct: 3%;
+  --screen-left-pct: 3%;
+  --screen-width-pct: 94%;
+  --screen-height-pct: 94%;
+  /* 폰트 스케일 보정: 기본 모드는 콘텐츠가 --computer-width 의 ~48%, 큰 화면은 ~94% 를
+     차지하므로 같은 calc(cw/N) 이 상대적으로 절반 크기가 된다. cw 를 ~1.9x 로 키워 비율 유지.
+     (눈으로 튜닝: 1.6~2.0) */
+  --computer-width: calc(min(100vw, calc(100vh * 2170 / 1952)) * 1.9);
+}
+
+body.large-screen .computer {
+  display: none;
+}
+
+/* .screen-wrap 을 창 전체로 확장 + 두꺼운 베이지 베젤(4변 명암 다른 border 로 볼록한 베벨) +
+   어두운 배경(CRT 내부). box-sizing:border-box + #screen{inset:0} 이라 #screen 은 테두리
+   안쪽(padding-box)을 채우므로 모든 뷰가 어두운 바탕 위 초록 글씨로 자동 렌더된다. */
+body.large-screen .screen-wrap {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto; /* 모니터 종횡비 잠금 해제 → 자유 리사이즈 */
+  background: var(--screen-dark);
+  border-radius: clamp(14px, 2.4vmin, 30px);
+  image-rendering: pixelated;
+  border-style: solid;
+  border-width: clamp(14px, 2.8vmin, 36px);
+  border-color: var(--frame-hi) var(--frame-edge) var(--frame-edge) var(--frame-hi);
+  box-shadow:
+    0 0 0 2px var(--frame-shadow), /* 바깥 외곽선(투명 배경 대비) */
+    inset 0 0 0 3px var(--screen-lip), /* 화면 둘레 오목한 어두운 립 */
+    inset 0 0 22px rgba(0, 0, 0, 0.55); /* 진공관 안쪽 음영(비네트) */
+}
+
+/* 상단 컨트롤/리사이즈 그립은 PNG 화면 좌표 기준이라 프레임에선 어긋남 → 코너로 재배치 */
+body.large-screen .top-controls {
+  top: 1.5%;
+  right: 2.5%;
+}
+
+body.large-screen .screen-mode-btn {
+  top: 1.5%;
+  left: 2.5%;
+}
+
+body.large-screen .resize-grip {
+  right: 0.6%;
+  bottom: 0.6%;
+}
+
+/* 화면 모드 토글 버튼 — 켜짐(큰 화면) 상태 강조. mute-btn.muted 와 같은 상시-크롬 방식. */
+.screen-mode-btn.active {
+  color: #fff;
+  text-shadow: 0 0 8px #fff;
 }
 
