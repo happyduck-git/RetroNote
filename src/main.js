@@ -6,7 +6,7 @@ import { initSound } from "./platform/sound.js";
 import { initScreenMode } from "./platform/screen-mode.js";
 import { checkForUpdate } from "./platform/updater.js";
 import { homeView } from "./views/home-view.js";
-import { noteView } from "./views/note-view.js";
+import { noteView, clearDraft } from "./views/note-view.js";
 import { noteListView } from "./views/note-list-view.js";
 import { nicknameView } from "./views/nickname-view.js";
 import { lobbyView } from "./views/lobby-view.js";
@@ -103,6 +103,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         clearLocalSession();
         setLastUid(null);
         router.navigate("login");
+        clearDraft(); // navigate 가 note unmount 로 초안을 재캡처하므로 반드시 그 이후에 비운다.
       } else if (event === "SIGNED_IN") {
         syncSessionScope(session?.user?.id || null);
         // start 내부에서 먼저 stop 하므로 사용자 전환 시에도 이전 구독을 갈아끼운다.
