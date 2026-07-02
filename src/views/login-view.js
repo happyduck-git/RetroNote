@@ -1,6 +1,7 @@
 // 로그인/회원가입 화면. 부팅 시 세션이 없으면 첫 화면으로 표시된다.
 // 성공 시 home 으로 이동. 모드는 SIGN IN ↔ SIGN UP 토글.
 import { el, onEnter } from "../core/dom.js";
+import { playKey } from "../platform/sound.js";
 import { signIn, signUp } from "../auth/auth.js";
 
 export const loginView = {
@@ -79,7 +80,10 @@ export const loginView = {
       emailInput.focus();
     });
     forgotBtn.addEventListener("click", () => ctx.navigate("reset"));
-    [emailInput, pwInput].forEach((input) => onEnter(input, submit));
+    [emailInput, pwInput].forEach((input) => {
+      input.addEventListener("keydown", () => playKey()); // 레트로 일관성: 로그인 입력도 키사운드
+      onEnter(input, submit);
+    });
 
     screenEl.append(el("div", { class: "form" }, [label, emailInput, pwInput, submitBtn, toggleBtn, forgotBtn, err]));
     setTimeout(() => emailInput.focus(), 0);

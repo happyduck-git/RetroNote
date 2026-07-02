@@ -1,5 +1,6 @@
 // 카오모지 picker 팝업. 단일 패널: 검색 input → 카테고리 sub-tab → 스크롤 grid.
 import { el } from "../../core/dom.js";
+import { playKey } from "../../platform/sound.js";
 import { KAOMOJI_GROUPS } from "../../chat/kaomoji-data.js";
 
 // 카오모지 picker 팝업. 단일 패널: 검색 input → 카테고리 sub-tab → 스크롤 grid.
@@ -39,6 +40,7 @@ export function buildEmojiPicker(input) {
     autocomplete: "off",
     dataset: { noDrag: "" },
   });
+  searchInput.addEventListener("keydown", () => playKey()); // 레트로 일관성: 카오모지 검색도 키사운드
 
   // --- 카테고리 sub-tab 바 ---
   const subTabsEl = el("div", { class: "room-emoji-subtabs", dataset: { noDrag: "" } });

@@ -2,6 +2,7 @@
 // params.code 가 필요하다 — 없으면 로비로 돌려보낸다.
 // 저장 후 해당 방으로 이동.
 import { el, onEnter } from "../core/dom.js";
+import { playKey } from "../platform/sound.js";
 import { getNickname, getRoomNickname, setRoomNickname } from "../chat/session.js";
 
 export const nicknameView = {
@@ -41,6 +42,8 @@ export const nicknameView = {
     }
 
     okBtn.addEventListener("click", submit);
+    // 레트로 일관성: 닉네임 입력도 글자마다 키사운드.
+    input.addEventListener("keydown", () => playKey());
     onEnter(input, submit);
 
     screenEl.append(el("div", { class: "form" }, [label, input, okBtn, err]));

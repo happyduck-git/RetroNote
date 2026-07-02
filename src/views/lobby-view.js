@@ -18,6 +18,7 @@ export const lobbyView = {
       class: "btn lobby-btn",
       text: "[ CREATE ROOM ]",
       onClick: () => {
+        playKey();
         // CREATE는 항상 새 코드 → saved 목록 길이만 체크.
         if (getSavedRooms().length >= MAX_SAVED_ROOMS) {
           alertDialog(`Max ${MAX_SAVED_ROOMS} chat rooms reached.\nDelete one before creating a new room.`);
@@ -55,6 +56,8 @@ export const lobbyView = {
     }
 
     joinBtn.addEventListener("click", join);
+    // 레트로 일관성: 코드 입력도 글자마다 키사운드.
+    input.addEventListener("keydown", () => playKey());
     input.addEventListener("input", () => {
       input.value = normalize(input.value);
     });
@@ -183,6 +186,7 @@ function startAliasEdit(row, aliasEl, room, container, ctx) {
   };
 
   input.addEventListener("keydown", (e) => {
+    playKey(); // 레트로 일관성: 방 이름 수정 입력도 키사운드.
     // IME composition 중 Enter 는 commit 키 → 무시 (한글/일본어/중국어 입력 시 중복 commit 방지).
     if (e.key === "Enter" && !e.isComposing) {
       e.preventDefault();
