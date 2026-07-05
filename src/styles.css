@@ -1214,7 +1214,10 @@ body.large-screen .screen-wrap {
   background: var(--screen-dark);
   image-rendering: pixelated; /* 베젤 이미지 스케일 시 픽셀 계단 유지 */
   border-style: solid;
-  border-width: clamp(14px, 2.8vmin, 36px);
+  /* 하한을 슬라이스(위/아래 16·좌/우 20)의 큰 값 이상으로 → 작은 창에서 베젤이 축소돼
+     안쪽 1px 선이 사라지는 것을 방지 */
+  border-width: clamp(20px, 2.8vmin, 36px);
+  border-color: var(--screen-dark); /* border-image 로드 실패 시 폴백(검정 두꺼운 테 방지) */
   /* 픽셀아트 베젤 9-slice: 원본 테두리 두께 위/아래 16px, 좌/우 20px (450x410 축소본) */
   border-image-source: url("assets/bezel-frame.png");
   border-image-slice: 16 20;
