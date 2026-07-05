@@ -26,13 +26,9 @@
 
   --crt-green: #00ff41;
 
-  /* 큰 화면 모드 프레임 — computer.png 플라스틱 베젤을 픽셀 샘플링한 톤 + 베벨용 명암 */
-  --frame-color: #f9e0c7; /* 베젤 면(기본) */
-  --frame-hi: #ffe9d4; /* 밝은 하이라이트(위/왼) */
-  --frame-edge: #dcbf9d; /* 그림자 모서리(아래/오른) */
-  --frame-shadow: #907e6a; /* 외곽선/깊은 그림자 */
-  --screen-lip: #5a4a38; /* 화면 둘레 오목한 어두운 립 */
-  --screen-dark: #060a06; /* 큰 화면 모드 CRT 바탕(근-검정) */
+  /* 큰 화면 모드 CRT 바탕(근-검정). 베젤 명암/오목 립은 이제 픽셀아트 이미지
+     assets/bezel-frame.png (border-image)가 담당한다. */
+  --screen-dark: #060a06;
 }
 
 * {
@@ -1207,23 +1203,23 @@ body.large-screen .computer {
   display: none;
 }
 
-/* .screen-wrap 을 창 전체로 확장 + 두꺼운 베이지 베젤(4변 명암 다른 border 로 볼록한 베벨) +
-   어두운 배경(CRT 내부). box-sizing:border-box + #screen{inset:0} 이라 #screen 은 테두리
-   안쪽(padding-box)을 채우므로 모든 뷰가 어두운 바탕 위 초록 글씨로 자동 렌더된다. */
+/* .screen-wrap 을 창 전체로 확장 + 픽셀아트 베젤 프레임(border-image) + 어두운 배경(CRT 내부).
+   box-sizing:border-box + #screen{inset:0} 이라 #screen 은 테두리 안쪽(padding-box)을
+   채우므로 모든 뷰가 어두운 바탕 위 초록 글씨로 자동 렌더된다.
+   베젤의 명암·오목 립·바깥 외곽선은 이제 이미지가 담고, 안쪽 비네트만 box-shadow 로 유지. */
 body.large-screen .screen-wrap {
   width: 100vw;
   height: 100vh;
   aspect-ratio: auto; /* 모니터 종횡비 잠금 해제 → 자유 리사이즈 */
   background: var(--screen-dark);
-  border-radius: clamp(14px, 2.4vmin, 30px);
-  image-rendering: pixelated;
+  image-rendering: pixelated; /* 베젤 이미지 스케일 시 픽셀 계단 유지 */
   border-style: solid;
   border-width: clamp(14px, 2.8vmin, 36px);
-  border-color: var(--frame-hi) var(--frame-edge) var(--frame-edge) var(--frame-hi);
-  box-shadow:
-    0 0 0 2px var(--frame-shadow), /* 바깥 외곽선(투명 배경 대비) */
-    inset 0 0 0 3px var(--screen-lip), /* 화면 둘레 오목한 어두운 립 */
-    inset 0 0 22px rgba(0, 0, 0, 0.55); /* 진공관 안쪽 음영(비네트) */
+  /* 픽셀아트 베젤 9-slice: 원본 테두리 두께 위/아래 16px, 좌/우 20px (450x410 축소본) */
+  border-image-source: url("assets/bezel-frame.png");
+  border-image-slice: 16 20;
+  border-image-repeat: stretch;
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.55); /* 진공관 안쪽 음영(비네트) */
 }
 
 /* 상단 컨트롤/리사이즈 그립은 PNG 화면 좌표 기준이라 프레임에선 어긋남 → 코너로 재배치 */
