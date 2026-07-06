@@ -26,6 +26,7 @@ function syncSessionScope(currentUid) {
   // 첫 부팅에서 한 번 정리되도록(이미 추적된 후엔 last === current 라 no-op).
   if (currentUid && last !== currentUid) {
     clearLocalSession();
+    clearDraft(); // 사용자 전환 시 이전 사용자의 미저장 노트 초안도 함께 폐기(로그아웃 경로와 대칭).
   }
   setLastUid(currentUid);
 }
