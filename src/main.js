@@ -102,8 +102,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         messageNotifier.stop(); // 알림 구독 정리
         clearLocalSession();
         setLastUid(null);
+        clearDraft(); // 초안 폐기 + 진행 중 캡처 무효화 → navigate 와 호출 순서 무관.
         router.navigate("login");
-        clearDraft(); // navigate 가 note unmount 로 초안을 재캡처하므로 반드시 그 이후에 비운다.
       } else if (event === "SIGNED_IN") {
         syncSessionScope(session?.user?.id || null);
         // start 내부에서 먼저 stop 하므로 사용자 전환 시에도 이전 구독을 갈아끼운다.
