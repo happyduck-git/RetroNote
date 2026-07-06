@@ -3,6 +3,7 @@
 //   2) OTP + 새 비번 입력 → RESET → 검증 후 비밀번호 교체 → home 으로
 // 성공 시 자동 로그인된 상태가 된다(verifyOtp가 세션을 발급).
 import { el } from "../core/dom.js";
+import { playKey } from "../platform/sound.js";
 import { requestPasswordReset, verifyResetOtp, updatePassword } from "../auth/auth.js";
 
 export const resetView = {
@@ -110,6 +111,7 @@ export const resetView = {
 
     [emailInput, otpInput, newPwInput].forEach((input) =>
       input.addEventListener("keydown", (e) => {
+        playKey(); // 레트로 일관성: 재설정 입력도 키사운드
         if (e.key !== "Enter") return;
         e.preventDefault();
         if (!codeSent) doSend();

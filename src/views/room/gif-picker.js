@@ -1,5 +1,6 @@
 // Giphy GIF picker. 검색 입력 + 결과 그리드 + 하단 attribution.
 import { el } from "../../core/dom.js";
+import { playKey } from "../../platform/sound.js";
 import { searchGifs, featuredGifs } from "../../chat/giphy.js";
 
 // Giphy beta 키는 시간당 100회(앱 전체 공유) 한도라 호출을 아껴야 한다 — 디바운스를 넉넉히.
@@ -27,6 +28,7 @@ export function buildGifPicker(onPick) {
     autocomplete: "off",
     dataset: { noDrag: "" },
   });
+  searchInput.addEventListener("keydown", () => playKey()); // 레트로 일관성: GIF 검색도 키사운드
   const gridEl = el("div", { class: "room-gif-grid", dataset: { noDrag: "" } });
   const statusEl = el("div", { class: "room-gif-status", text: "", hidden: true });
   // Giphy 약관(5A)은 공식 "Powered By GIPHY" 로고 마크를 눈에 띄게 표시하도록 요구한다 —
