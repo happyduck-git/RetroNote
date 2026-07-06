@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { makeScreenMode } from "./screen-mode.js";
 
-const KEY = "retro-note.large-screen";
+const KEY = "retro-note.bezel-mode";
 
 // localStorage 호환 fake — getItem/setItem 만 사용.
 function fakeStorage(init = {}) {
@@ -31,16 +31,16 @@ describe("makeScreenMode", () => {
     const root = fakeRoot();
     const m = makeScreenMode({ storage: fakeStorage(), root });
     m.apply();
-    assert.equal(m.isLarge(), false);
-    assert.equal(root.classList.contains("large-screen"), false);
+    assert.equal(m.isBezelMode(), false);
+    assert.equal(root.classList.contains("bezel-mode"), false);
   });
 
   test('저장값 "true" → on + 클래스 부착', () => {
     const root = fakeRoot();
     const m = makeScreenMode({ storage: fakeStorage({ [KEY]: "true" }), root });
     m.apply();
-    assert.equal(m.isLarge(), true);
-    assert.ok(root.classList.contains("large-screen"));
+    assert.equal(m.isBezelMode(), true);
+    assert.ok(root.classList.contains("bezel-mode"));
   });
 
   test("toggle: 값 반전 + 영속화 + 클래스 + 리스너 통지", () => {
@@ -51,14 +51,14 @@ describe("makeScreenMode", () => {
     m.onChange((v) => seen.push(v));
 
     m.toggle();
-    assert.equal(m.isLarge(), true);
+    assert.equal(m.isBezelMode(), true);
     assert.equal(storage._map.get(KEY), "true");
-    assert.ok(root.classList.contains("large-screen"));
+    assert.ok(root.classList.contains("bezel-mode"));
 
     m.toggle();
-    assert.equal(m.isLarge(), false);
+    assert.equal(m.isBezelMode(), false);
     assert.equal(storage._map.get(KEY), "false");
-    assert.equal(root.classList.contains("large-screen"), false);
+    assert.equal(root.classList.contains("bezel-mode"), false);
 
     assert.deepEqual(seen, [true, false]);
   });

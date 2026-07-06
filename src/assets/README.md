@@ -3,9 +3,9 @@
 앱에서 쓰는 정적 에셋. 대부분은 그대로 쓰는 이미지/사운드지만,
 아래 항목은 생성·처리 이력과 코드 결합이 있어 따로 적어 둔다.
 
-## bezel-frame.png — 큰 화면 모드 베젤 프레임
+## bezel-frame.png — 베젤 화면 모드 베젤 프레임
 
-`body.large-screen .screen-wrap` 이 `border-image` 로 쓰는 픽셀아트 베젤
+`body.bezel-mode .screen-wrap` 이 `border-image` 로 쓰는 픽셀아트 베젤
 (모니터 이미지 대신 창을 채우는 레트로 프레임). 가운데는 완전 투명이라
 그 자리로 어두운 CRT 화면(`--screen-dark`)과 뷰가 비쳐 보인다.
 
