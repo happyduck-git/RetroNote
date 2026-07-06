@@ -2,17 +2,20 @@
 // params.filename 이 있으면 그 노트를 불러와 편집(같은 파일 덮어쓰기), 없으면 새 노트(첫 저장 시 파일 발급).
 // 모든 새 노트는 .md 로 저장한다 — 마크다운은 평문의 상위집합이라 평문만 써도 유효한 .md 다(형식 선택 불필요).
 // 기존 .txt 노트도 그대로 열어 편집하며, 편집 저장 시 원래 파일명(확장자)을 보존한다.
-// 재진입은 빈 노트(미저장 초안 비보존) — 세션 내 사용자 전환 시 이전 초안 노출 방지.
+// 미저장 초안은 메모리에 보존되어 화면 재진입 시 복원된다(실수로 이탈해도 작성 내용 보호).
+// 로그아웃(SIGNED_OUT) 시 초안을 비워, 같은 세션에서 다른 사용자가 로그인해도 이전 초안이 노출되지 않게 한다.
 import { el } from "../core/dom.js";
 import { saveNote, writeNote, readNote } from "../platform/notes-fs.js";
 import { alertDialog } from "../core/confirm.js";
 import { createMarkdownEditor } from "./note-editor.js";
+import { createDraftStore } from "./note-draft.js";
 
 // CSS .shake 애니메이션 duration과 일치해야 한다 (style.css 참조).
 const SHAKE_DURATION_MS = 450;
 const TOAST_DURATION_MS = 1500;
 
 let cmView = null; // 마크다운 EditorView | null
+const draftStore = createDraftStore(); // 새 노트 미저장 초안 저장소(메모리 전용) — 화면 재진입 시 복원.
 
 function shake(container) {
   container.classList.remove("shake");
@@ -43,14 +46,17 @@ export const noteView = {
   async mount(screenEl, params) {
     // filename 이 있으면 그 파일을 편집. 새 노트의 첫 저장 후엔 발급된 파일명을 여기에 담아 같은 파일로 덮어쓴다.
     let currentFilename = params?.filename || null;
+    const startedNew = !currentFilename; // 이 마운트가 '새 노트'로 시작했는지(로드 실패로 null 된 기존 노트와 구분).
     // 의도적 위반: shake 애니메이션은 외부 chrome(.screen-wrap=#computer-wrap)에 정의됨 — screenEl 만 흔들면 시각 효과가 깨진다.
     const container = document.getElementById("computer-wrap");
 
     const toast = el("div", { id: "saved-toast", class: "saved-toast", text: "[ SAVED ]" });
     const saveBtn = el("button", { class: "btn save-btn", id: "save-btn", title: "Save", text: "[ SAVE ]" });
 
-    const { host, view } = createMarkdownEditor("");
+    const { host, view } = createMarkdownEditor(currentFilename ? "" : draftStore.seed());
     cmView = view;
+    // 새 노트로 시작 && 아직 첫 저장 전일 때만 초안 보존. 기존 파일 편집분은 보존 안 함.
+    draftStore.arm(() => view.state.doc.toString(), () => startedNew && !currentFilename);
 
     saveBtn.addEventListener("click", async () => {
       const content = cmView ? cmView.state.doc.toString() : "";
@@ -62,7 +68,10 @@ export const noteView = {
         // 불러온(또는 이미 한 번 저장된) 노트는 같은 파일에 덮어쓰고(확장자 보존),
         // 새 노트는 .md 로 파일명을 발급받아 캡처한다.
         if (currentFilename) await writeNote(currentFilename, content);
-        else currentFilename = await saveNote(content, { markdown: true });
+        else {
+          currentFilename = await saveNote(content, { markdown: true });
+          draftStore.clearOnSave(); // 저장 완료 → 초안이 다음 새 노트에 재등장하지 않도록.
+        }
         showSavedToast(toast);
       } catch (err) {
         console.error("save failed:", err);
@@ -96,8 +105,15 @@ export const noteView = {
   // 라우터가 navigate 시 호출 → CM 정리(메모리 누수 방지). DOM 제거는 라우터가 한다.
   unmount() {
     if (cmView) {
+      draftStore.captureAndDisarm(); // destroy 전에 doc 을 읽어 초안 보존 + 캡처 해제.
       cmView.destroy();
       cmView = null;
     }
   },
 };
+
+// 로그아웃(SIGNED_OUT) 시 main.js 가 호출 — 세션 내 사용자 전환 시 이전 초안 노출 방지.
+// clear() 가 진행 중 캡처도 해제하므로 navigate 와의 호출 순서와 무관하게 초안이 노출되지 않는다.
+export function clearDraft() {
+  draftStore.clear();
+}
