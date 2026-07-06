@@ -1,5 +1,6 @@
 // 앱 전역 "베젤 화면" 모드: 모니터 이미지 대신 창을 채우는 레트로 베젤 프레임으로 전환.
-// #screen-mode-btn(index.html 상시 크롬)로 토글, localStorage 로 영속. sound.js 뮤트 패턴 참고.
+// 이름 규칙: "screen-mode" = 토글 축(모듈/버튼/API), "bezel" = 켜짐 상태값(클래스/키/판정).
+// #screen-mode-btn(index.html 상시 크롬)로 토글, localStorage 로 영속. DI factory 는 session.js 컨벤션.
 const BEZEL_KEY = "retro-note.bezel-mode";
 // 구 키 승계: v0.1.10의 "retro-note.large-screen" 값이 있으면 새 키로 읽어 기존 설정 보존.
 const LEGACY_KEY = "retro-note.large-screen";

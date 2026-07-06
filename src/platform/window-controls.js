@@ -2,12 +2,17 @@
 // Tauri 외 환경(브라우저)에서는 window API가 없으므로 창 제어를 통째로 건너뛴다.
 import { isBezelMode, onScreenModeChange } from "./screen-mode.js";
 
-const tauriWindow = window.__TAURI__?.window;
+// node 유닛테스트(window 없음)에서도 이 모듈을 import 할 수 있게 최상위 window 접근을 가드.
+// (window-size.test.js 가 상수만 읽어 tauri.conf.json 과 대조하려면 import 가 가능해야 함)
+const tauriWindow =
+  typeof window !== "undefined" ? window.__TAURI__?.window : undefined;
 const getCurrentWindow = tauriWindow?.getCurrentWindow;
 const LogicalSize = tauriWindow?.LogicalSize;
 
-const WIN_MIN = { w: 400, h: 360 };
-const WIN_MAX = { w: 2000, h: 1600 }; // tauri.conf.json 의 maxWidth/maxHeight 와 동기화 필수
+// tauri.conf.json 의 minWidth/minHeight/maxWidth/maxHeight 와 동기화 필수.
+// 손으로 맞춘 값이라, window-size.test.js 가 양쪽 일치를 자동 검증한다(어긋나면 테스트 실패).
+export const WIN_MIN = { w: 400, h: 360 };
+export const WIN_MAX = { w: 2000, h: 1600 };
 const WIN_DEFAULT = { w: 800, h: 720 };
 const ASPECT = 2170 / 1952; // computer.png 비율(기본 모드 전용)
 
@@ -22,8 +27,9 @@ async function currentLogicalSize() {
   return { w: physical.width / factor, h: physical.height / factor };
 }
 
-// 너비를 받아 종횡비를 유지하면서 MIN/MAX 안에 맞춰 창 크기를 설정
-async function applyAspectClampedWidth(targetW) {
+// 순수 계산(부작용 없음) — setSize 호출과 분리해 window-size.test.js 로 검증 가능하게 함.
+// 너비를 받아 종횡비를 유지하면서 MIN/MAX 안에 맞춘 정수 크기를 돌려준다.
+export function computeAspectClamped(targetW) {
   let newW = clamp(targetW, WIN_MIN.w, WIN_MAX.w);
   let newH = newW / ASPECT;
   if (newH < WIN_MIN.h) {
@@ -33,14 +39,25 @@ async function applyAspectClampedWidth(targetW) {
     newH = WIN_MAX.h;
     newW = newH * ASPECT;
   }
-  await getCurrentWindow().setSize(new LogicalSize(Math.round(newW), Math.round(newH)));
+  return { w: Math.round(newW), h: Math.round(newH) };
 }
 
 // 베젤 화면 모드: 종횡비를 무시하고 가로/세로를 각각 독립적으로 MIN/MAX 클램프.
+export function computeFreeSize(targetW, targetH) {
+  return {
+    w: Math.round(clamp(targetW, WIN_MIN.w, WIN_MAX.w)),
+    h: Math.round(clamp(targetH, WIN_MIN.h, WIN_MAX.h)),
+  };
+}
+
+async function applyAspectClampedWidth(targetW) {
+  const { w, h } = computeAspectClamped(targetW);
+  await getCurrentWindow().setSize(new LogicalSize(w, h));
+}
+
 async function applyFreeSize(targetW, targetH) {
-  const w = clamp(targetW, WIN_MIN.w, WIN_MAX.w);
-  const h = clamp(targetH, WIN_MIN.h, WIN_MAX.h);
-  await getCurrentWindow().setSize(new LogicalSize(Math.round(w), Math.round(h)));
+  const { w, h } = computeFreeSize(targetW, targetH);
+  await getCurrentWindow().setSize(new LogicalSize(w, h));
 }
 
 async function scaleWindowBy(factor) {
@@ -62,8 +79,11 @@ export function initWindowControls(container) {
   // 기본 모드로 복귀할 때만, 자유 리사이즈됐을 수 있는 창을 모니터 종횡비로 다시 맞춘다.
   onScreenModeChange(async (bezelMode) => {
     if (bezelMode) return;
-    const cur = await currentLogicalSize();
-    await applyAspectClampedWidth(cur.w);
+    // Tauri IPC(창 크기 조회/설정) 실패는 흡수 — 미처리 Promise 거부 방지(best-effort 복원).
+    try {
+      const cur = await currentLogicalSize();
+      await applyAspectClampedWidth(cur.w);
+    } catch {}
   });
 
   const closeBtn = document.getElementById("close-btn");

@@ -2,7 +2,7 @@
 // params.filename 이 있으면 그 노트를 불러와 편집(같은 파일 덮어쓰기), 없으면 새 노트(첫 저장 시 파일 발급).
 // 모든 새 노트는 .md 로 저장한다 — 마크다운은 평문의 상위집합이라 평문만 써도 유효한 .md 다(형식 선택 불필요).
 // 기존 .txt 노트도 그대로 열어 편집하며, 편집 저장 시 원래 파일명(확장자)을 보존한다.
-// 미저장 초안은 메모리에 보존되어 화면 재진입 시 복원된다(실수로 이탈해도 작성 내용 보호).
+// 새 노트의 미저장 초안은 메모리에 보존되어 화면 재진입 시 복원된다(첫 저장 전까지만 — 실수로 이탈해도 작성 내용 보호).
 // 로그아웃(SIGNED_OUT) 시 초안을 비워, 같은 세션에서 다른 사용자가 로그인해도 이전 초안이 노출되지 않게 한다.
 import { el } from "../core/dom.js";
 import { saveNote, writeNote, readNote } from "../platform/notes-fs.js";
@@ -55,8 +55,10 @@ export const noteView = {
 
     const { host, view } = createMarkdownEditor(currentFilename ? "" : draftStore.seed());
     cmView = view;
-    // 새 노트로 시작 && 아직 첫 저장 전일 때만 초안 보존. 기존 파일 편집분은 보존 안 함.
-    draftStore.arm(() => view.state.doc.toString(), () => startedNew && !currentFilename);
+    // 초안 보존 대상 = "새 노트로 시작 && 아직 첫 저장 전". 로드 실패로 currentFilename 이 null 된
+    // 기존 노트는 startedNew=false 라 여기서 제외된다(디스크 저장본이 있으므로 초안 미보존).
+    const isUnsavedNewNote = () => startedNew && !currentFilename;
+    draftStore.arm(() => view.state.doc.toString(), isUnsavedNewNote);
 
     saveBtn.addEventListener("click", async () => {
       const content = cmView ? cmView.state.doc.toString() : "";

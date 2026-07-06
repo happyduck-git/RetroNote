@@ -182,8 +182,9 @@ body {
   z-index: 2;
 }
 
-.top-controls .btn {
-  position: static;
+/* 우상단 top-controls 버튼과 좌상단 화면모드 토글은 크기 메트릭을 공유한다(위치만 각자 지정). */
+.top-controls .btn,
+.screen-mode-btn {
   font-size: calc(var(--computer-width) / 40);
   padding: 0;
   line-height: 1;
@@ -193,6 +194,10 @@ body {
   width: 1.8em;
   height: 1.2em;
   box-sizing: content-box;
+}
+
+.top-controls .btn {
+  position: static;
 }
 
 /* display:inline-flex 가 [hidden] 기본 규칙을 덮어쓰지 않도록 보정 */
@@ -218,19 +223,10 @@ body {
 }
 
 /* 좌상단 화면 모드 토글 — 우상단 top-controls 와 대칭으로 화면 좌상단 코너에 배치.
-   .top-controls .btn 과 동일한 크기 메트릭 사용. */
+   크기 메트릭은 위의 공용 규칙(.top-controls .btn, .screen-mode-btn)에서 상속. */
 .screen-mode-btn {
   top: calc(var(--screen-top-pct) - 2.5%);
   left: calc(var(--screen-left-pct) - 0.625%);
-  font-size: calc(var(--computer-width) / 40);
-  padding: 0;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.8em;
-  height: 1.2em;
-  box-sizing: content-box;
   z-index: 2;
 }
 

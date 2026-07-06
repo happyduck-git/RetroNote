@@ -26,7 +26,7 @@ function newRecords() {
 }
 
 // 가짜 AudioContext 생성자. initialState/resumeTo 로 suspended·interrupted 시나리오를 만든다.
-function makeAudioCtor(rec, { initialState = "running", resumeTo = "running" } = {}) {
+function makeAudioCtor(rec, { initialState = "running", resumeTo = "running", asyncResume = false } = {}) {
   return class FakeAudioContext {
     constructor() {
       this.state = initialState;
@@ -37,6 +37,13 @@ function makeAudioCtor(rec, { initialState = "running", resumeTo = "running" } =
     }
     resume() {
       rec.resumeCalls += 1;
+      // asyncResume: 상태 전환을 마이크로태스크로 미뤄 "resume 은 비동기" 를 사실적으로 흉내낸다
+      // (연타 몰림·resume 도중 뮤트 같은 타이밍 경계를 재현하려면 필요).
+      if (asyncResume) {
+        return Promise.resolve().then(() => {
+          this.state = resumeTo;
+        });
+      }
       this.state = resumeTo;
       return Promise.resolve();
     }
@@ -194,5 +201,65 @@ describe("sound — 컨텍스트 깨우기", () => {
     await flush();
     assert.ok(rec.resumeCalls >= 1);
     assert.equal(rec.starts, 0); // 멈춘 컨텍스트에 재생하지 않음
+  });
+});
+
+describe("sound — 연타/뮤트 경계", () => {
+  test("suspended 중 빠른 연타 → 깨어난 뒤 소리는 한 번만 (몰림 방지)", async () => {
+    const rec = newRecords();
+    installGlobals({
+      fetchImpl: okFetch(rec),
+      AudioCtor: makeAudioCtor(rec, { initialState: "suspended", resumeTo: "running", asyncResume: true }),
+    });
+    const { playKey } = await loadSound();
+    playKey(); // 로딩 시작(아직 미준비)
+    await flush(); // 로드 완료, 컨텍스트는 여전히 suspended
+    // 컨텍스트가 잠든 동안 5번 연타 — 첫 호출만 resume 을 예약해야 한다(resumePending 가드).
+    playKey();
+    playKey();
+    playKey();
+    playKey();
+    playKey();
+    await flush();
+    assert.equal(rec.resumeCalls, 1); // resume 예약은 딱 한 번
+    assert.equal(rec.starts, 1); // 소리도 한 번만(몰림 없음)
+  });
+
+  test("resume 도중 뮤트로 바뀌면 재생하지 않는다", async () => {
+    const rec = newRecords();
+    installGlobals({
+      fetchImpl: okFetch(rec),
+      AudioCtor: makeAudioCtor(rec, { initialState: "suspended", resumeTo: "running", asyncResume: true }),
+    });
+    // 뮤트 버튼 fake 를 심어 initSound 가 클릭 핸들러를 배선하게 한다.
+    let clickMute = null;
+    const btn = {
+      classList: { toggle() {} },
+      title: "",
+      addEventListener: (ev, fn) => {
+        if (ev === "click") clickMute = fn;
+      },
+    };
+    globalThis.document.getElementById = (id) => (id === "mute-btn" ? btn : null);
+    const { playKey, initSound } = await loadSound();
+    initSound(); // 로딩 시작 + 뮤트 버튼 배선
+    await flush(); // 로드 완료(suspended)
+    playKey(); // resume + .then(fireSource) 예약
+    clickMute(); // resume 완료 전에 뮤트 ON
+    await flush();
+    assert.ok(rec.resumeCalls >= 1);
+    assert.equal(rec.starts, 0); // 뮤트로 바뀌어 재생 안 함
+  });
+
+  test("AudioContext 미지원이면 봉인 — 크래시 없이 재fetch/재생 안 함", async () => {
+    const rec = newRecords();
+    installGlobals({ fetchImpl: okFetch(rec), AudioCtor: undefined }); // window.AudioContext 없음
+    const { playKey } = await loadSound();
+    playKey();
+    await flush();
+    playKey();
+    await flush();
+    assert.equal(rec.fetches, 0); // Ctx 없음 → fetch 전에 loadFailed 봉인
+    assert.equal(rec.starts, 0);
   });
 });
