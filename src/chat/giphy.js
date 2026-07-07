@@ -15,7 +15,8 @@
 import { CHAT } from "../config.js";
 
 const BASE = "https://api.giphy.com/v1/gifs";
-const DEFAULT_LIMIT = 24;
+// 한 페이지 크기. picker/paginator 가 무한 스크롤 페이지 크기로 재사용하므로 export.
+export const DEFAULT_LIMIT = 24;
 const RATING = "pg-13";
 
 // 속도 제한(HTTP 429) 을 일반 네트워크 오류와 구분하기 위한 표식.
@@ -89,14 +90,20 @@ async function call(endpoint, params, signal) {
   return (data.data || []).map(normalize).filter(Boolean);
 }
 
+// offset(무한 스크롤 다음 페이지)을 params 로 변환한다. offset:0 은 URL 에서 생략해
+// 1페이지 요청을 기존과 바이트 단위로 동일하게 유지한다(캐시·동작 무변화).
+function offsetParam(offset) {
+  return offset > 0 ? { offset: String(offset) } : {};
+}
+
 // 검색. 빈 쿼리면 trending 과 동일 결과 — 호출 측 분기 부담을 줄임.
-export function searchGifs(query, { limit = DEFAULT_LIMIT, signal } = {}) {
+export function searchGifs(query, { limit = DEFAULT_LIMIT, offset = 0, signal } = {}) {
   const q = String(query || "").trim();
-  if (!q) return featuredGifs({ limit, signal });
-  return call("search", { q, limit: String(limit) }, signal);
+  if (!q) return featuredGifs({ limit, offset, signal });
+  return call("search", { q, limit: String(limit), ...offsetParam(offset) }, signal);
 }
 
 // 트렌딩 GIF. 검색창이 비어 있는 초기 상태에서 표시. (Tenor 의 featured 대응 — 이름은 그대로 유지)
-export function featuredGifs({ limit = DEFAULT_LIMIT, signal } = {}) {
-  return call("trending", { limit: String(limit) }, signal);
+export function featuredGifs({ limit = DEFAULT_LIMIT, offset = 0, signal } = {}) {
+  return call("trending", { limit: String(limit), ...offsetParam(offset) }, signal);
 }
