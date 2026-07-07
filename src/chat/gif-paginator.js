@@ -110,3 +110,11 @@ export function createGifPaginator({ fetchPage, pageSize = 24, maxPages = 5 }) {
 
   return { beginQuery, loadFirst, loadMore };
 }
+
+// loadMore 실패를 이 쿼리 세션 동안 완전히 중단(halt)해야 하는지 판정하는 순수 정책.
+// 429(GiphyRateLimitError, 앱 전체 공유 한도)만 halt — 재시도해도 한도만 더 깎이고 무의미하므로
+// 새 검색 전까지 멈춘다. 그 외(네트워크 등 일시적 오류)는 halt 하지 않아 다음 스크롤에서 재시도된다.
+// (AbortError 는 뷰에서 먼저 걸러져 여기까지 오지 않는다.)
+export function shouldHaltLoadMore(err) {
+  return err?.name === "GiphyRateLimitError";
+}

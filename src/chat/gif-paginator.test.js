@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { createGifPaginator } from "./gif-paginator.js";
+import { createGifPaginator, shouldHaltLoadMore } from "./gif-paginator.js";
 
 const noSignal = { aborted: false };
 
@@ -167,5 +167,23 @@ describe("createGifPaginator", () => {
     p.beginQuery("cat");
     await p.loadFirst(noSignal);
     await assert.rejects(() => p.loadMore(noSignal), (e) => e.name === "GiphyRateLimitError");
+  });
+});
+
+describe("shouldHaltLoadMore", () => {
+  test("429(GiphyRateLimitError)는 halt=true — 새 검색 전까지 loadMore 중단", () => {
+    const err = new Error("rate");
+    err.name = "GiphyRateLimitError";
+    assert.equal(shouldHaltLoadMore(err), true);
+  });
+
+  test("일시적 오류(네트워크 등)는 halt=false — 다음 스크롤에서 재시도", () => {
+    assert.equal(shouldHaltLoadMore(new Error("network down")), false);
+    assert.equal(shouldHaltLoadMore(new TypeError("Failed to fetch")), false);
+  });
+
+  test("null/undefined 에도 안전하게 halt=false", () => {
+    assert.equal(shouldHaltLoadMore(null), false);
+    assert.equal(shouldHaltLoadMore(undefined), false);
   });
 });

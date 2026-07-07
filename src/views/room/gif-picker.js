@@ -2,7 +2,7 @@
 import { el } from "../../core/dom.js";
 import { playKey } from "../../platform/sound.js";
 import { searchGifs, featuredGifs, DEFAULT_LIMIT } from "../../chat/giphy.js";
-import { createGifPaginator } from "../../chat/gif-paginator.js";
+import { createGifPaginator, shouldHaltLoadMore } from "../../chat/gif-paginator.js";
 
 // Giphy beta 키는 시간당 100회(앱 전체 공유) 한도라 호출을 아껴야 한다 — 디바운스를 넉넉히.
 const GIF_SEARCH_DEBOUNCE_MS = 600;
@@ -22,9 +22,13 @@ export function buildGifPicker(onPick) {
   let abortCtl = null;
   let debounceTimer = null;
   let lastQuery = null;
-  // loadMore 가 429/에러로 멈춘 뒤, 스크롤마다 같은 offset 을 재시도해 공유 한도를 소진하는 것을
-  // 막는 플래그. 새 쿼리(load)에서 해제된다 → "재검색으로 재시도".
+  // 429(공유 한도 초과)로 loadMore 가 멈춘 뒤, 스크롤마다 같은 offset 을 재시도해 한도를 더 소진하는
+  // 것을 막는 플래그. 새 쿼리(load)에서만 해제된다 → "재검색으로 재시도".
+  // (일시적 네트워크 오류는 여기서 halt 하지 않고 다음 스크롤에서 재시도되게 둔다.)
   let moreHalted = false;
+  // loadMore 인플라이트 가드(뷰 레벨). 빠른 스크롤로 loadMore 가 연달아 불려도 진행 중인 1건이
+  // 상태줄("loading more…") 표시/해제를 독점하게 해, skipped 호출이 도중에 지워버리는 깜빡임을 없앤다.
+  let moreLoading = false;
   // 페이지네이션 로직(offset/중복제거/hasMore/캐시)은 순수 모듈에 위임. 여기선 렌더·스크롤·abort 만.
   const paginator = createGifPaginator({
     fetchPage: ({ query, offset, signal }) =>
@@ -153,14 +157,15 @@ export function buildGifPicker(onPick) {
 
   // 다음 페이지 로드 → 그리드 아래로 append. paginator 가 인플라이트/hasMore/상한을 관리한다.
   async function loadMore() {
-    if (!visible || moreHalted) return;
+    if (!visible || moreHalted || moreLoading) return;
     // hide() 는 abortCtl 을 null 로 두고, show() 는 그리드가 차 있으면 load()를 부르지 않는다.
     // 그 경로(hide→show→scroll)에선 컨트롤러가 없으므로 여기서 만들어 null.signal 크래시를 막는다.
     if (!abortCtl) abortCtl = new AbortController();
+    moreLoading = true;
     setMoreStatus("loading more…");
     try {
       const res = await paginator.loadMore(abortCtl.signal);
-      // stale(새 쿼리가 끼어듦) 또는 skipped(로딩 중/소진) — 조용히 상태줄만 정리.
+      // stale(새 쿼리가 끼어듦) 또는 skipped(hasMore 소진) — 조용히 상태줄만 정리.
       if (res.stale || res.skipped) {
         setMoreStatus("");
         return;
@@ -169,15 +174,20 @@ export function buildGifPicker(onPick) {
       setMoreStatus("");
     } catch (e) {
       if (e?.name === "AbortError") return; // 상태줄 그대로 — 새 로드가 갈아끼운다.
-      // 429/기타: 이 쿼리 세션 동안 loadMore 를 중단한다. paginator 의 hasMore 는 true 로 남아 있어
-      // (캐시 오염 방지) 이 플래그가 없으면 스크롤마다 같은 offset 을 재시도해 공유 한도를 소진한다.
-      moreHalted = true;
-      if (e?.name === "GiphyRateLimitError") {
+      // 429(공유 한도 초과)만 이 쿼리 세션 동안 loadMore 를 완전히 중단한다. paginator 의 hasMore 는
+      // true 로 남으므로(캐시 오염 방지) 이 플래그가 없으면 스크롤마다 같은 offset 을 재시도해 한도를
+      // 더 소진한다. 새 검색(load)에서만 풀린다.
+      if (shouldHaltLoadMore(e)) {
+        moreHalted = true;
         setMoreStatus("검색 한도 초과 — 잠시 후 다시 시도");
         return;
       }
+      // 일시적 오류(네트워크 등): halt 하지 않는다. offset/hasMore 가 그대로라 다음 스크롤이 같은
+      // offset 을 다시 시도한다("error — try again"). 사용자가 스크롤할 때만 재요청되므로 자동 스핀은 없다.
       console.error("giphy loadMore failed:", e);
       setMoreStatus("error — try again");
+    } finally {
+      moreLoading = false;
     }
   }
 

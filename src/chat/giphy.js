@@ -78,8 +78,8 @@ async function call(endpoint, params, signal) {
   if (!isGiphyConfigured()) throw new Error("GIPHY_NOT_CONFIGURED");
   const qs = new URLSearchParams({
     api_key: CHAT.giphyApiKey,
-    limit: String(DEFAULT_LIMIT),
     rating: RATING,
+    // limit 은 호출자(searchGifs/featuredGifs)가 항상 지정한다 — 여기 기본값을 두면 늘 덮어써지는 죽은 코드.
     ...params,
   });
   const res = await fetch(`${BASE}/${endpoint}?${qs}`, { signal });
