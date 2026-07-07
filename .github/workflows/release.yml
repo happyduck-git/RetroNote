@@ -57,7 +57,9 @@ jobs:
           };
           EOF
 
-      # 릴리스 노트 자동 생성: 병합된 PR 제목 기반 changelog.
+      # 릴리스 노트 자동 생성: 병합된 PR 제목 기반 changelog(작성자·PR·이슈 번호 제거).
+      # 생성·정리 로직은 scripts/format-release-notes.sh 에 있고 로컬 미리보기
+      # (npm run notes:preview -- <tag> <branch>)와 이 스텝이 그대로 공유한다.
       # tauri-action 이 이 본문을 릴리스 본문 + latest.json 의 notes 에 넣어,
       # 앱 업데이트 다이얼로그(update.body)에 "변경 내용"으로 표시된다.
       # 매트릭스 3개 잡이 각각 생성하지만 같은 태그라 결과는 동일하다. 실패 시 기본 문구로 폴백.
@@ -66,19 +68,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          body=$(gh api --method POST \
-            "repos/${{ github.repository }}/releases/generate-notes" \
-            -f tag_name="${{ github.ref_name }}" \
-            --jq '.body' 2>/dev/null || true)
-          if [ -z "$body" ]; then
-            body="See the assets below to download and install."
-          fi
+          body=$(bash scripts/format-release-notes.sh "${{ github.ref_name }}")
           {
             echo "body<<RN_EOF"
             echo "$body"
             echo "RN_EOF"
           } >> "$GITHUB_OUTPUT"
+          # 발행(Publish) 전 확인용: Actions 실행 요약에도 생성된 노트를 그대로 노출.
+          # draft 만 만들어지므로, 이 화면과 draft 본문을 눈으로 검증한 뒤 수동 Publish.
+          {
+            echo "### 📝 이번 릴리스 노트 (앱 업데이트 다이얼로그 '변경 내용')"
+            echo ""
+            echo '```'
+            echo "$body"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: tauri-apps/tauri-action@v0
         env:
