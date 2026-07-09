@@ -86,6 +86,14 @@ export function initWindowControls(container) {
     } catch {}
   });
 
+  // 최소화: OS 최소화(Windows 작업표시줄 / macOS Dock). 트레이 아님 — 복원하면 그대로 돌아온다.
+  const minimizeBtn = document.getElementById("minimize-btn");
+  if (minimizeBtn) {
+    minimizeBtn.addEventListener("click", async () => {
+      await getCurrentWindow().minimize();
+    });
+  }
+
   const closeBtn = document.getElementById("close-btn");
   if (closeBtn) {
     closeBtn.addEventListener("click", async () => {
