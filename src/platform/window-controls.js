@@ -22,8 +22,11 @@ function clamp(v, lo, hi) {
 
 async function currentLogicalSize() {
   const win = getCurrentWindow();
-  const physical = await win.innerSize();
-  const factor = await win.scaleFactor();
+  // 두 IPC 는 서로 독립 — 병렬 조회로 왕복 1회 절약.
+  const [physical, factor] = await Promise.all([
+    win.innerSize(),
+    win.scaleFactor(),
+  ]);
   return { w: physical.width / factor, h: physical.height / factor };
 }
 
@@ -50,6 +53,15 @@ export function computeFreeSize(targetW, targetH) {
   };
 }
 
+// 베젤 복귀: 자유 리사이즈된 창의 폰트 기준(--computer-width)은 min(w, h×ASPECT) —
+// 이를 새 폭으로 삼으면 복귀 후에도 글자 체감 크기가 이어지고, 창은 절대 커지지 않는다
+// (min(w, h×ASPECT) ≤ w 이고 그 높이 ≤ h). 폭 w 를 그대로 쓰면(과거 동작) 가로로 긴
+// 창에서 높이가 늘며 글자가 커진다. 반환값은 클램프 전 목표 폭: 호출부가
+// computeAspectClamped 를 거친다.
+export function computeBezelExitWidth(w, h) {
+  return Math.min(w, h * ASPECT);
+}
+
 async function applyAspectClampedWidth(targetW) {
   const { w, h } = computeAspectClamped(targetW);
   await getCurrentWindow().setSize(new LogicalSize(w, h));
@@ -69,20 +81,23 @@ async function scaleWindowBy(factor) {
 }
 
 async function resetWindowSize() {
+  // 두 모드가 같은 폰트 기준을 쓰므로(#71 재설계) 기본 크기는 모드와 무관하게 동일.
   await getCurrentWindow().setSize(new LogicalSize(WIN_DEFAULT.w, WIN_DEFAULT.h));
 }
 
 export function initWindowControls(container) {
   if (!tauriWindow) return; // 브라우저 등 Tauri 외 환경: 창 제어 비활성(채팅 테스트용)
 
-  // 화면 모드 전환: 진입 시엔 창 크기를 바꾸지 않는다(프레임만 전환 → 콘텐츠가 같은 창 안에서 커짐).
-  // 기본 모드로 복귀할 때만, 자유 리사이즈됐을 수 있는 창을 모니터 종횡비로 다시 맞춘다.
+  // 화면 모드 전환(#71 재설계): 창 크기는 건드리지 않는다 — 두 모드가 같은 폰트 기준
+  // (--computer-width, :root 단일 선언)을 쓰므로 글자 체감 크기는 CSS 만으로 연속된다.
+  // 기본 모드 복귀 시에만, 베젤에서 자유 리사이즈됐을 수 있는 창을 폰트 기준 폭으로
+  // 종횡비 재클램프한다(종횡비가 이미 맞으면 크기 변화 없음).
   onScreenModeChange(async (bezelMode) => {
     if (bezelMode) return;
-    // Tauri IPC(창 크기 조회/설정) 실패는 흡수 — 미처리 Promise 거부 방지(best-effort 복원).
+    // Tauri IPC(창 크기 조회/설정) 실패는 흡수 — 미처리 Promise 거부 방지(best-effort).
     try {
       const cur = await currentLogicalSize();
-      await applyAspectClampedWidth(cur.w);
+      await applyAspectClampedWidth(computeBezelExitWidth(cur.w, cur.h));
     } catch {}
   });
 

@@ -1181,18 +1181,19 @@ body {
 
 /* ===== 베젤 화면 모드 =====
    모니터 이미지를 숨기고 창을 꽉 채우는 레트로 입체 베젤 프레임으로 전환.
-   body.bezel-mode 에서 --screen-*-pct / --computer-width 를 재정의하면
-   상속을 타고 모든 뷰(.menu/.form/.lobby/.note-list/.room, top-controls, 저장버튼 등)가
-   자동으로 프레임을 채우도록 재배치·재스케일된다. */
+   body.bezel-mode 에서 --screen-*-pct 를 재정의하면 상속을 타고 모든 뷰
+   (.menu/.form/.lobby/.note-list/.room, top-controls, 저장버튼 등)가
+   자동으로 프레임을 채우도록 재배치된다. */
 body.bezel-mode {
   --screen-top-pct: 3%;
   --screen-left-pct: 3%;
   --screen-width-pct: 94%;
   --screen-height-pct: 94%;
-  /* 폰트 스케일 보정: 기본 모드는 콘텐츠가 --computer-width 의 ~48%, 베젤 화면은 ~94% 를
-     차지하므로 같은 calc(cw/N) 이 상대적으로 절반 크기가 된다. cw 를 ~1.9x 로 키워 비율 유지.
-     (눈으로 튜닝: 1.6~2.0) */
-  --computer-width: calc(min(100vw, calc(100vh * 2170 / 1952)) * 1.9);
+  /* 폰트 기준(--computer-width)은 :root 값을 그대로 상속 — 두 모드가 같은 기준을 쓰므로
+     전환 시 글자 체감 크기가 창 크기와 무관하게 연속된다(#71). 베젤은 화면 영역만 넓어져
+     "같은 글자, 더 넓은 화면"이 된다. 여기서 배율을 곱하면 토글 순간 글자가 그 배율만큼
+     튀니 주의(과거 ×1.9 + 창 리사이즈 상쇄안은 전환 점프·플래시가 커서 철회).
+     window-size.test.js 가 --computer-width 선언이 :root 하나뿐임을 검증한다. */
 }
 
 body.bezel-mode .computer {

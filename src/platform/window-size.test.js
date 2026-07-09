@@ -9,6 +9,7 @@ import {
   WIN_MAX,
   computeAspectClamped,
   computeFreeSize,
+  computeBezelExitWidth,
 } from "./window-controls.js";
 
 const conf = JSON.parse(
@@ -45,6 +46,51 @@ describe("computeFreeSize — 베젤 모드 자유 비율 클램프", () => {
 
   test("상한 초과는 MAX 로 클램프 (가로·세로 독립)", () => {
     assert.deepEqual(computeFreeSize(9999, 9999), { w: WIN_MAX.w, h: WIN_MAX.h });
+  });
+});
+
+describe("--computer-width 선언 단일성(#71 재설계)", () => {
+  test("선언은 :root 하나뿐 — 베젤 모드가 재정의하지 않는다", () => {
+    // 두 모드의 글자 체감 크기 연속은 "폰트 기준 공식이 모드 공통"이라는 사실에 기댄다.
+    // 베젤에서 배율 재정의가 부활하면(과거 ×1.9) 토글 순간 글자가 튄다 — 여기서 잡는다.
+    const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+    const matches = [...css.matchAll(/--computer-width\s*:[^;]+;/g)];
+    assert.equal(matches.length, 1, "--computer-width 선언은 :root 의 1개여야 함");
+  });
+});
+
+describe("computeBezelExitWidth — 베젤 복귀 폭(#71 재설계: 폰트 기준 폭)", () => {
+  test("종횡비가 이미 맞는 창: 크기 변화 없음", () => {
+    assert.deepEqual(computeAspectClamped(computeBezelExitWidth(800, 720)), {
+      w: 800,
+      h: 720,
+    });
+  });
+
+  test("가로로 긴 창: 세로 기준이 지배(w 를 쓰면 높이가 늘며 글자가 커짐)", () => {
+    // min(1200, 500×ASPECT) ≈ 555.8 → 높이 500 은 유지되고 폭만 종횡비로 줄어든다.
+    assert.deepEqual(computeAspectClamped(computeBezelExitWidth(1200, 500)), {
+      w: 556,
+      h: 500,
+    });
+  });
+
+  test("세로로 긴 창: 가로 기준이 지배", () => {
+    assert.equal(computeBezelExitWidth(400, 1600), 400);
+  });
+
+  test("복귀는 창을 절대 키우지 않는다(min 기반 + 종횡비 클램프)", () => {
+    const samples = [
+      { w: 800, h: 720 },
+      { w: 1200, h: 500 },
+      { w: 400, h: 1600 },
+      { w: 2000, h: 1600 },
+      { w: 450, h: 405 },
+    ];
+    for (const { w, h } of samples) {
+      const back = computeAspectClamped(computeBezelExitWidth(w, h));
+      assert.ok(back.w <= w && back.h <= h, `${w}x${h} → ${back.w}x${back.h}`);
+    }
   });
 });
 
