@@ -26,6 +26,10 @@ Chat only activates if Supabase keys are present. `config.js` ships with empty d
 
 `platform/notes-fs.js` writes plain `.txt` to `Documents/retro-notes/` via the Tauri fs plugin — unrelated to the DB/chat path.
 
+## Screensaver
+
+`platform/screensaver.js` — 3 minutes with no in-app input (mouse/keyboard/wheel) mounts a canvas overlay over the CRT screen area on **every** view; any input dismisses it instantly, restoring the previous state (pure overlay — no routing, and the waking keydown/click is swallowed so it can't hit UI underneath, e.g. the close button). Incoming chat messages do NOT dismiss it. Two scenes (`screensaver-scenes.js`: starfield / matrix rain) alternate per activation until one is chosen (issue #73 comparison phase); pin one via localStorage `retro-note.screensaver-scene`, or preview instantly from the devtools console with `__screensaver.show("matrix")`.
+
 ## Conventions
 
 - Prefer dependency-injection factories for testable logic (e.g. `makeChangeRoomNickname` in `session.js` takes its collaborators so tests can pass fakes; the default export wires the real module state).

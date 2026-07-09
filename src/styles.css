@@ -1311,3 +1311,24 @@ body.bezel-mode .cm-host {
   text-shadow: 0 0 8px #fff;
 }
 
+/* 화면보호기 오버레이(#73) — CRT 화면 영역만 덮는다(모니터 프레임/베젤은 그대로 노출).
+   --screen-*-pct 를 쓰므로 기본/베젤 두 모드 모두에서 화면 영역에 맞는다.
+   screensaver.js 가 발동 시 #computer-wrap 에 부착하고 해제 시 제거한다. */
+.screensaver {
+  position: absolute;
+  top: var(--screen-top-pct);
+  left: var(--screen-left-pct);
+  width: var(--screen-width-pct);
+  height: var(--screen-height-pct);
+  background: var(--screen-dark);
+  z-index: 30; /* lightbox(21) 포함 모든 UI 위 */
+  cursor: none; /* 진짜 화면보호기처럼 커서 숨김 — 움직이면 어차피 해제 */
+}
+
+.screensaver canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated; /* 저해상도 장면(스타필드)의 굵은 픽셀 업스케일 */
+}
+
