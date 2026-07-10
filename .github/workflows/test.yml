@@ -1,0 +1,30 @@
+name: Test
+
+# 저장소 최초의 테스트 CI. 유닛 + jsdom 배선 테스트(node --test)를 PR/메인 푸시마다 돌려
+# 회귀를 자동으로 잡는다. 릴리스/빌드 워크플로(release.yml, build-windows.yml)와 독립적이다.
+# (Playwright E2E 스텝은 후속 커밋에서 이 워크플로에 추가된다.)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 순수 JS(jsdom 은 네이티브 빌드 없음)라 OS 무관 — ubuntu 에서 실행.
+      - name: Run unit tests
+        run: npm test
