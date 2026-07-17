@@ -67,6 +67,8 @@ export const roomView = {
     saveRoom(code);
     // 이 방에 입장 → 안 읽은 표시(로비 배지 + 도크 합계)를 그 방만큼 지운다.
     messageNotifier.clearRoom(code);
+    // 펫: 지금 보는 방 설정 → 이 방 펫 안읽음 제거(빨간 점 기준의 단일 출처).
+    messageNotifier.setActiveRoom(code);
     const { transport, store, userId, backfill, loadOlder } = entry;
     // 위쪽 무한 스크롤 상태(뷰 로컬). hasMore 는 entry 초기값에서 출발하고 loadOlder/resumeTrim 이 갱신.
     let loadingOlder = false;
@@ -414,6 +416,8 @@ export const roomView = {
       window.removeEventListener("resize", restoreScroll);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onWinFocus);
+      // 펫: 방을 나가면 "지금 보는 방" 해제.
+      messageNotifier.setActiveRoom(null);
     };
   },
 

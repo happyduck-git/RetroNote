@@ -22,6 +22,23 @@
         "decorations": false,
         "transparent": true,
         "resizable": false
+      },
+      {
+        "label": "pet",
+        "title": "pet",
+        "url": "pet.html",
+        "width": 200,
+        "height": 180,
+        "minWidth": 140,
+        "minHeight": 130,
+        "maxWidth": 400,
+        "maxHeight": 360,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": false,
+        "resizable": true,
+        "skipTaskbar": true,
+        "visible": false
       }
     ],
     "security": {

@@ -4,6 +4,7 @@ import { createRouter } from "./core/router.js";
 import { initWindowControls } from "./platform/window-controls.js";
 import { initSound } from "./platform/sound.js";
 import { initScreenMode } from "./platform/screen-mode.js";
+import { initPetBridge } from "./pet/bridge.js";
 import { checkForUpdate } from "./platform/updater.js";
 import { homeView } from "./views/home-view.js";
 import { noteView, clearDraft } from "./views/note-view.js";
@@ -50,6 +51,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   initWindowControls(container);
   initSound();
   initScreenMode();
+  // 펫: 별도 펫 창으로 신호 중계 + 상단 토글 버튼 배선. 인증/채팅 설정과 무관하게 1회.
+  initPetBridge();
   // 자동 업데이트 확인은 채팅 설정/라우팅과 무관하게 1회. await 하지 않아(fire-and-forget)
   // 네트워크 지연이 앱 시작/뷰 렌더를 막지 않는다. 내부에서 모든 실패를 흡수(best-effort).
   checkForUpdate();
@@ -89,7 +92,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       const session = await getSession();
       // 부팅 시점에 사용자가 바뀌어 있다면(앱 종료 중 다른 계정으로 로그인 등) 정리.
       syncSessionScope(session?.user?.id || null);
-      // 새 메시지 알림(issue #52): 로그인 상태면 앱 수준 알림 구독 시작(fire-and-forget — 라우팅 비차단).
+      // 새 메시지 알림: 로그인 상태면 앱 수준 알림 구독 시작(fire-and-forget — 라우팅 비차단).
       if (session?.user?.id) messageNotifier.start(session.user.id);
       router.navigate(session ? "home" : "login");
     } catch (e) {

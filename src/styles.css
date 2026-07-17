@@ -211,6 +211,17 @@ body {
   text-decoration-thickness: 1px;
 }
 
+/* 펫 토글([^ω^]) — 얼굴 글리프가 넓어 폭만 자동으로 늘린다(높이/폰트는 공용값 상속).
+   펫 창이 숨김 상태면 흐리게 표시(mute 와 같은 관례). */
+.pet-btn {
+  width: auto;
+  letter-spacing: -0.06em;
+}
+
+.pet-btn.off {
+  opacity: 0.35;
+}
+
 /* textarea 바로 아래 중앙 */
 .save-btn {
   top: calc(var(--screen-top-pct) + var(--screen-height-pct) - 2.5%);
