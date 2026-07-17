@@ -92,7 +92,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       const session = await getSession();
       // 부팅 시점에 사용자가 바뀌어 있다면(앱 종료 중 다른 계정으로 로그인 등) 정리.
       syncSessionScope(session?.user?.id || null);
-      // 새 메시지 알림(issue #52): 로그인 상태면 앱 수준 알림 구독 시작(fire-and-forget — 라우팅 비차단).
+      // 새 메시지 알림: 로그인 상태면 앱 수준 알림 구독 시작(fire-and-forget — 라우팅 비차단).
       if (session?.user?.id) messageNotifier.start(session.user.id);
       router.navigate(session ? "home" : "login");
     } catch (e) {
