@@ -30,6 +30,14 @@ export function makeMessageNotifier({
   const unreadByRoom = new Map(); // code -> 안 읽은 수
   const subs = new Set(); // 로비 등 구독자(방별 카운터 변경 시 재렌더)
 
+  // --- 펫 전용 신호(issue #78, 비파괴 추가) ---
+  // 배지 경로(위)는 !isAppFocused() 게이트라 "보고 있을 때 온 메시지"에 반응을 못 만든다.
+  // 늘 보이는 펫은 focus 무관 신호가 필요하므로 별도 상태/구독자를 둔다(기존 경로는 불변).
+  let activeRoom = null; // 지금 보고 있는 방 코드(없으면 null)
+  const petUnreadByRoom = new Map(); // 펫 전용 안 읽음(지금 보는 방 제외)
+  const arrivedSubs = new Set(); // 새 메시지 도착 반응 구독자
+  const petUnreadSubs = new Set(); // 펫 안 읽음 변경 구독자(빨간 점)
+
   function total() {
     let n = 0;
     for (const v of unreadByRoom.values()) n += v;
@@ -63,6 +71,58 @@ export function makeMessageNotifier({
     unreadByRoom.clear();
     if (had) refresh();
     else setUnread(0); // 배지만 확실히 0 으로(구독자 통지는 불필요).
+    // 펫 상태도 함께 정리(비파괴 추가).
+    const petHad = petUnreadByRoom.size > 0;
+    petUnreadByRoom.clear();
+    activeRoom = null;
+    if (petHad) emitPetUnread();
+  }
+
+  // --- 펫 전용 헬퍼(비파괴 추가) ---
+  function emitArrived(code) {
+    for (const fn of arrivedSubs) {
+      try { fn(code); } catch (e) { console.error("pet arrived subscriber failed:", e); }
+    }
+  }
+
+  function emitPetUnread() {
+    for (const fn of petUnreadSubs) {
+      try { fn(); } catch (e) { console.error("pet unread subscriber failed:", e); }
+    }
+  }
+
+  function petTotal() {
+    let n = 0;
+    for (const v of petUnreadByRoom.values()) n += v;
+    return n;
+  }
+
+  function petBump(code) {
+    petUnreadByRoom.set(code, (petUnreadByRoom.get(code) || 0) + 1);
+    emitPetUnread();
+  }
+
+  // 지금 보는 방을 설정. 방이면 그 방 펫 안읽음을 지운다(= 봤음).
+  // 펫 안읽음을 지우는 유일한 지점(단일 출처). 실제로 지워졌을 때만 통지.
+  function setActiveRoom(code) {
+    activeRoom = code || null;
+    if (code && petUnreadByRoom.delete(code)) emitPetUnread();
+  }
+
+  function getPetUnreadTotal() {
+    return petTotal();
+  }
+
+  // 새 메시지 도착 반응 구독(모든 방, focus 무관). unsubscribe 반환.
+  function onMessageArrived(cb) {
+    arrivedSubs.add(cb);
+    return () => arrivedSubs.delete(cb);
+  }
+
+  // 펫 안읽음 변경 구독(빨간 점). unsubscribe 반환.
+  function petSubscribe(cb) {
+    petUnreadSubs.add(cb);
+    return () => petUnreadSubs.delete(cb);
   }
 
   async function start(userId) {
@@ -92,6 +152,10 @@ export function makeMessageNotifier({
     try {
       if (!row) return;
       if (row.sender_uid === userId) return; // 내 메시지 제외
+      // --- 펫 전용 신호(비파괴 추가): focus 무관. 기존 배지 경로보다 먼저 처리 ---
+      emitArrived(row.room_code); // 펫 반응: 모든 방
+      if (row.room_code !== activeRoom) petBump(row.room_code); // 펫 점: 지금 보는 방이 아니면 +1
+      // --- 기존 배지 경로(불변): 여기부터 focus 게이트 ---
       if (isAppFocused()) return; // 앱 활성 중이면 보고 있으니 제외
       // "내 방인지"는 따로 거르지 않는다 — 알림 채널은 RLS 로 보호돼 내가 멤버인 방의 메시지만
       // 애초에 도착한다(통합 테스트로 비멤버 미수신 증명). 과거의 getSavedRooms 필터는 localStorage
@@ -124,7 +188,18 @@ export function makeMessageNotifier({
     return () => subs.delete(cb);
   }
 
-  return { start, stop, clearRoom, getUnreadByRoom, subscribe };
+  return {
+    start,
+    stop,
+    clearRoom,
+    getUnreadByRoom,
+    subscribe,
+    // 펫 전용(비파괴 추가)
+    setActiveRoom,
+    onMessageArrived,
+    petSubscribe,
+    getPetUnreadTotal,
+  };
 }
 
 // 실제 wiring: main.js 가 로그인/로그아웃 시 start/stop, room-view 가 입장 시 clearRoom,

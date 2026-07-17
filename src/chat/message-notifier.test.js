@@ -139,3 +139,72 @@ describe("message-notifier 방별 카운트 / 배지 합계", () => {
     assert.equal(lastBadge(), 0);
   });
 });
+
+describe("message-notifier 펫 전용 신호(issue #78, focus 무관)", () => {
+  test("focus=true 에서도 onMessageArrived 발화 + petUnread 증가(배지는 focus 게이트라 불변)", async () => {
+    const { notifier, fc } = buildNotifier({ isAppFocused: () => true });
+    await notifier.start("me-uid");
+    const arrived = spy();
+    notifier.onMessageArrived(arrived);
+    fc.state.handler({ new: incomingRow({ room_code: A }) });
+    assert.equal(arrived.calls.length, 1);
+    assert.deepEqual(arrived.calls[0], [A]); // 방 코드 전달
+    assert.equal(notifier.getPetUnreadTotal(), 1); // 펫 점: focus 무관 증가
+    assert.equal(notifier.getUnreadByRoom().size, 0); // 배지는 focus 라 불변
+  });
+
+  test("지금 보는 방(activeRoom)의 메시지는 펫 안읽음을 안 올린다(반응은 함), 다른 방은 올린다", async () => {
+    const { notifier, fc } = buildNotifier({ isAppFocused: () => true });
+    await notifier.start("me-uid");
+    const arrived = spy();
+    notifier.onMessageArrived(arrived);
+    notifier.setActiveRoom(A);
+    fc.state.handler({ new: incomingRow({ room_code: A }) });
+    assert.equal(arrived.calls.length, 1); // 반응은 함
+    assert.equal(notifier.getPetUnreadTotal(), 0); // 점은 안 오름(보고 있는 방)
+    fc.state.handler({ new: incomingRow({ room_code: B }) });
+    assert.equal(notifier.getPetUnreadTotal(), 1); // 다른 방은 오름
+  });
+
+  test("setActiveRoom(X) 는 그 방 펫 안읽음을 지우고 구독자에게 통지한다", async () => {
+    const { notifier, fc } = buildNotifier({ isAppFocused: () => true });
+    await notifier.start("me-uid");
+    const petCb = spy();
+    notifier.petSubscribe(petCb);
+    fc.state.handler({ new: incomingRow({ room_code: A }) });
+    assert.equal(notifier.getPetUnreadTotal(), 1);
+    const before = petCb.calls.length;
+    notifier.setActiveRoom(A);
+    assert.equal(notifier.getPetUnreadTotal(), 0);
+    assert.equal(petCb.calls.length, before + 1);
+  });
+
+  test("setActiveRoom 은 지울 게 없으면 통지하지 않는다", async () => {
+    const { notifier } = buildNotifier();
+    await notifier.start("me-uid");
+    const petCb = spy();
+    notifier.petSubscribe(petCb);
+    notifier.setActiveRoom(A);
+    assert.equal(petCb.calls.length, 0);
+  });
+
+  test("clearRoom 은 펫 안읽음을 건드리지 않는다(배지만 지움)", async () => {
+    const { notifier, fc } = buildNotifier({ isAppFocused: () => false });
+    await notifier.start("me-uid");
+    fc.state.handler({ new: incomingRow({ room_code: A }) }); // 배지 + 펫 둘 다 +1
+    assert.equal(notifier.getUnreadByRoom().get(A), 1);
+    assert.equal(notifier.getPetUnreadTotal(), 1);
+    notifier.clearRoom(A);
+    assert.equal(notifier.getUnreadByRoom().has(A), false); // 배지 지워짐
+    assert.equal(notifier.getPetUnreadTotal(), 1); // 펫 맵 불변
+  });
+
+  test("stop 시 펫 안읽음/activeRoom 도 정리된다", async () => {
+    const { notifier, fc } = buildNotifier({ isAppFocused: () => true });
+    await notifier.start("me-uid");
+    fc.state.handler({ new: incomingRow({ room_code: A }) });
+    assert.equal(notifier.getPetUnreadTotal(), 1);
+    await notifier.stop();
+    assert.equal(notifier.getPetUnreadTotal(), 0);
+  });
+});
