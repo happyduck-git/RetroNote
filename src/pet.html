@@ -38,7 +38,7 @@
         transform-origin: center bottom;
         will-change: transform;
       }
-      /* 안 읽음 빨간 점 — 펫 위에 얹힘(원이 아닌 픽셀 사각 블록, badge.js 와 같은 빨강). */
+      /* 안 읽음 빨간 점 — 펫 위에 얹힘(동그란 점, badge.js 와 같은 빨강). 통통 튀어 눈에 띈다. */
       .pet-dot {
         position: absolute;
         top: 4%;
@@ -46,7 +46,26 @@
         width: 13%;
         aspect-ratio: 1 / 1;
         background: #e23b3b;
-        image-rendering: pixelated;
+        border-radius: 50%;
+        transform-origin: center bottom;
+        animation: pet-dot-bounce 0.9s ease-in-out infinite;
+      }
+      /* 통통 튀는 느낌 — 위로 튀며 늘어나고 바닥에 닿을 때 눌리는 스쿼시&스트레치. */
+      @keyframes pet-dot-bounce {
+        0%,
+        20%,
+        100% {
+          transform: translateY(0) scale(1, 1);
+        }
+        40% {
+          transform: translateY(-45%) scale(0.92, 1.08);
+        }
+        60% {
+          transform: translateY(0) scale(1.08, 0.92);
+        }
+        80% {
+          transform: translateY(-18%) scale(0.97, 1.03);
+        }
       }
       .pet-dot[hidden] {
         display: none;
