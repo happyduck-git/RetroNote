@@ -19,10 +19,10 @@ const PET_MAX = { w: 400, h: 360 };
 function buildDom() {
   const dot = el("div", { class: "pet-dot", hidden: true });
   const pet = el("div", { class: "pet" }, [dot]);
-  // 우클릭 메뉴(기본 숨김). 지금은 "Remove pet" 하나 — 항목 추가는 여기에 버튼을 더하면 됨.
+  // 우클릭 메뉴(기본 숨김).
   const removeBtn = el("button", { class: "pet-menu-item", type: "button", text: "Remove pet" });
   const menu = el("div", { class: "pet-menu", hidden: true }, [removeBtn]);
-  // 리사이즈 그립 — 투명 창에서 유일하게 보이는 손잡이(우하단 코너). 드래그로 창 크기 조절.
+  // 투명 창을 드래그로 리사이즈하는 손잡이(우하단 코너).
   const grip = el("div", { class: "pet-resize", title: "Drag to resize" });
   const stage = el("div", { class: "pet-stage" }, [pet, menu, grip]);
   document.body.append(stage);
@@ -133,7 +133,7 @@ export function initPetWindow() {
     menuOpen = false;
   }
 
-  // 펫 창의 "실제" 표시 상태를 메인에 보고한다 → 버튼 상태의 유일한 기준(메인 추측값 desync 방지).
+  // 실제 표시 상태를 메인에 보고 — 버튼 상태의 유일한 기준.
   async function reportShown() {
     try {
       const win = getCurrentWindow?.();
@@ -169,9 +169,7 @@ export function initPetWindow() {
     }
   });
 
-  // --- 리사이즈 그립(투명 창을 마우스로 크기 조절) ---
-  // 메인 창(window-controls.js)과 같은 수동 방식: mousedown 에서 현재 크기를 잡고,
-  // mousemove 의 화면좌표 델타를 더해 setSize. rAF 로 스로틀 + min/max clamp.
+  // 리사이즈 그립 — window-controls.js 와 같은 수동 방식(현재 크기 + 화면좌표 델타 → setSize, rAF 스로틀).
   grip.addEventListener("mousedown", async (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -257,9 +255,7 @@ export function initPetWindow() {
   // 조회: 메인이 현재 상태를 물으면 실제 표시 여부를 보고(메인 리로드 후 버튼 재동기화).
   evapi?.listen?.("pet:query", () => reportShown());
 
-  // 시작 시: 항상 숨김으로 시작한다(부팅 때 자동으로 뜨지 않음 — 메인 상단 버튼으로만 표시).
-  // tauri.conf 의 visible:false 와 이중으로 보장. 그 뒤 메인에 준비 완료를 알리면,
-  // 메인(bridge)이 현재 세션 표시 여부/포커스/안읽음을 회신한다(창 리로드 시에도 동기화).
+  // 부팅 시 항상 숨김(tauri.conf 의 visible:false 와 이중 보장). 준비되면 메인이 상태를 회신한다.
   (async () => {
     try {
       await getCurrentWindow?.().hide?.();

@@ -30,9 +30,9 @@ export function makeMessageNotifier({
   const unreadByRoom = new Map(); // code -> 안 읽은 수
   const subs = new Set(); // 로비 등 구독자(방별 카운터 변경 시 재렌더)
 
-  // --- 펫 전용 신호(issue #78, 비파괴 추가) ---
-  // 배지 경로(위)는 !isAppFocused() 게이트라 "보고 있을 때 온 메시지"에 반응을 못 만든다.
-  // 늘 보이는 펫은 focus 무관 신호가 필요하므로 별도 상태/구독자를 둔다(기존 경로는 불변).
+  // --- 펫 전용 신호(비파괴 추가) ---
+  // 배지 경로는 !isAppFocused() 게이트라 "보고 있을 때 온 메시지"에 반응을 못 만든다.
+  // 늘 보이는 펫은 focus 무관 신호가 필요해 별도 상태/구독자를 둔다(기존 배지/로비 경로는 불변).
   let activeRoom = null; // 지금 보고 있는 방 코드(없으면 null)
   const petUnreadByRoom = new Map(); // 펫 전용 안 읽음(지금 보는 방 제외)
   const arrivedSubs = new Set(); // 새 메시지 도착 반응 구독자
@@ -71,14 +71,14 @@ export function makeMessageNotifier({
     unreadByRoom.clear();
     if (had) refresh();
     else setUnread(0); // 배지만 확실히 0 으로(구독자 통지는 불필요).
-    // 펫 상태도 함께 정리(비파괴 추가).
+    // 펫 상태도 함께 정리.
     const petHad = petUnreadByRoom.size > 0;
     petUnreadByRoom.clear();
     activeRoom = null;
     if (petHad) emitPetUnread();
   }
 
-  // --- 펫 전용 헬퍼(비파괴 추가) ---
+  // --- 펫 전용 헬퍼 ---
   function emitArrived(code) {
     for (const fn of arrivedSubs) {
       try { fn(code); } catch (e) { console.error("pet arrived subscriber failed:", e); }
@@ -152,11 +152,10 @@ export function makeMessageNotifier({
     try {
       if (!row) return;
       if (row.sender_uid === userId) return; // 내 메시지 제외
-      // --- 펫 전용 신호(비파괴 추가): focus 무관. 기존 배지 경로보다 먼저 처리 ---
+      // 펫 신호는 focus 무관 → 아래 배지 경로의 focus 게이트보다 먼저 처리.
       emitArrived(row.room_code); // 펫 반응: 모든 방
       if (row.room_code !== activeRoom) petBump(row.room_code); // 펫 점: 지금 보는 방이 아니면 +1
-      // --- 기존 배지 경로(불변): 여기부터 focus 게이트 ---
-      if (isAppFocused()) return; // 앱 활성 중이면 보고 있으니 제외
+      if (isAppFocused()) return; // 앱 활성 중이면 보고 있으니 제외(기존 배지 경로)
       // "내 방인지"는 따로 거르지 않는다 — 알림 채널은 RLS 로 보호돼 내가 멤버인 방의 메시지만
       // 애초에 도착한다(통합 테스트로 비멤버 미수신 증명). 과거의 getSavedRooms 필터는 localStorage
       // 가 동기화 도중 잠깐 비는 순간 메시지를 통째로 버리는 버그가 있어 제거했다.
@@ -194,7 +193,7 @@ export function makeMessageNotifier({
     clearRoom,
     getUnreadByRoom,
     subscribe,
-    // 펫 전용(비파괴 추가)
+    // 펫 전용
     setActiveRoom,
     onMessageArrived,
     petSubscribe,

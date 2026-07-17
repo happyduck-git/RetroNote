@@ -51,7 +51,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initWindowControls(container);
   initSound();
   initScreenMode();
-  // 펫(issue #78): 별도 펫 창으로 신호 중계 + 상단 토글 버튼 배선. 인증/채팅 설정과 무관하게 1회.
+  // 펫: 별도 펫 창으로 신호 중계 + 상단 토글 버튼 배선. 인증/채팅 설정과 무관하게 1회.
   initPetBridge();
   // 자동 업데이트 확인은 채팅 설정/라우팅과 무관하게 1회. await 하지 않아(fire-and-forget)
   // 네트워크 지연이 앱 시작/뷰 렌더를 막지 않는다. 내부에서 모든 실패를 흡수(best-effort).

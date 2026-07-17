@@ -1,12 +1,6 @@
 // 펫 행동 상태 머신 — 순수 로직(DOM/타이머/rAF 없음).
-// 정규화 위치 x ∈ [0,1] 과 상태(idle/walk/sleep/react), 바라보는 방향(facing)만 관리한다.
+// 정규화 위치 x ∈ [0,1] 과 상태(idle/walk/sleep/react), 방향(facing)만 관리한다.
 // tick(dtMs) 로 시간을 밀어 넣고, rng 를 주입받아 결정론적으로 테스트한다.
-//
-// 상태 전이(요약):
-//   idle  → walk / idle / sleep (rng 확률)
-//   walk  → facing 방향으로 이동, 경계(0/1) 도달 시 facing 반전, 지속시간 지나면 idle
-//   sleep → 길고 드묾. react() 로 깨어남
-//   react → one-shot(짧게), 지나면 idle 복귀. sleep 중이면 즉시 깨워 react
 
 // 기본 상수(모두 튜닝 가능). ms 단위.
 const DEFAULTS = {
@@ -27,10 +21,10 @@ export function makePetBehavior({ rng = Math.random, config = {} } = {}) {
 
   let state = "idle";
   let x = 0.5;
-  let facing = "right"; // 스프라이트 기본 방향 기준
-  let elapsed = 0; // 현재 상태 경과(ms)
-  let duration = pick(C.idleMin, C.idleMax); // 현재 상태 목표 지속(ms)
-  let alerting = false; // 지속 알림: 안 읽은 메시지가 있는 동안 놀람 상태로 고정
+  let facing = "right"; // 스프라이트 원본 방향(오른쪽) 기준
+  let elapsed = 0;
+  let duration = pick(C.idleMin, C.idleMax);
+  let alerting = false; // 안 읽은 메시지가 있는 동안 놀람 상태로 고정
 
   function pick(lo, hi) {
     return lo + rng() * (hi - lo);
@@ -55,7 +49,6 @@ export function makePetBehavior({ rng = Math.random, config = {} } = {}) {
     duration = pick(C.sleepMin, C.sleepMax);
   }
 
-  // idle 이 끝났을 때 다음 상태를 rng 로 고른다.
   function chooseFromIdle() {
     const r = rng();
     if (r < C.pWalk) enterWalk();
@@ -83,7 +76,6 @@ export function makePetBehavior({ rng = Math.random, config = {} } = {}) {
 
     if (elapsed < duration) return;
 
-    // 상태 지속시간 만료 → 다음 상태.
     switch (state) {
       case "idle":
         chooseFromIdle();
@@ -102,8 +94,7 @@ export function makePetBehavior({ rng = Math.random, config = {} } = {}) {
     }
   }
 
-  // 일시 반응(one-shot) — 아무 메시지나 도착 시 잠깐 놀람 후 idle 복귀. sleep 이어도 즉시 깨움.
-  // 지속 알림 중이면 이미 놀람 상태이므로 무시.
+  // 일시 반응(one-shot). sleep 이어도 즉시 깨우고, 지속 알림 중이면 이미 놀람이라 무시.
   function react() {
     if (alerting) return;
     if (state === "react") return;
@@ -112,7 +103,7 @@ export function makePetBehavior({ rng = Math.random, config = {} } = {}) {
     duration = C.reactMs;
   }
 
-  // 지속 알림 on/off — 안 읽은 메시지가 있는 동안 놀람을 계속 유지하고, 확인하면 해제해 일상 동작 복귀.
+  // 안 읽음이 남아있는 동안 놀람 고정, 확인하면 해제해 일상 동작으로 복귀.
   function setAlerting(on) {
     const next = !!on;
     if (next === alerting) return;

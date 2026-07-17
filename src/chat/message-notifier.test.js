@@ -140,7 +140,7 @@ describe("message-notifier 방별 카운트 / 배지 합계", () => {
   });
 });
 
-describe("message-notifier 펫 전용 신호(issue #78, focus 무관)", () => {
+describe("message-notifier 펫 전용 신호(focus 무관)", () => {
   test("focus=true 에서도 onMessageArrived 발화 + petUnread 증가(배지는 focus 게이트라 불변)", async () => {
     const { notifier, fc } = buildNotifier({ isAppFocused: () => true });
     await notifier.start("me-uid");
