@@ -1,7 +1,10 @@
 // 펫 창(pet.html)의 진입 모듈 — DOM 생성 + rAF 렌더 루프 + 창 드래그/제거 + 브리지 이벤트 수신.
-// 순수 로직은 behavior.js, 애니 데이터는 sprite.js. 이 파일은 렌더 cadence 와 Tauri 창 배선을 담당(미테스트).
+// 펫은 "저장된 선택(pet-cat pref)"의 순수 투영: 스스로 show/hide 하지 않고 pet:set-cat 에만 반응
+// (우클릭 제거도 pref 왕복) → 유령창/부활 버그 차단.
 import { el } from "../core/dom.js";
 import { makePetBehavior } from "./behavior.js";
+import { makePetDisplayController } from "./pet-display.js";
+import { assetBaseFor, normalizeCat } from "./cats.js";
 import { ANIMATIONS, animKeyFor } from "./sprite.js";
 
 // Tauri 전역(withGlobalTauri). 브라우저 단독 실행에선 없으므로 옵셔널 접근.
@@ -9,8 +12,6 @@ const T = typeof window !== "undefined" ? window.__TAURI__ : undefined;
 const getCurrentWindow = T?.window?.getCurrentWindow;
 const evapi = T?.event;
 const LogicalSize = T?.window?.LogicalSize;
-
-const ASSET_BASE = "assets/pet/"; // pet.html 기준 상대경로 → src/assets/pet/
 
 // 리사이즈 클램프 — tauri.conf.json 의 pet 창 min/max 와 동기화(빌드 스텝 없어 손으로 맞춤).
 const PET_MIN = { w: 140, h: 130 };
@@ -37,19 +38,25 @@ export function initPetWindow() {
   let unread = 0;
   let mainFocused = true;
 
-  // 애니메이션 재생 상태.
+  // 현재 색의 에셋 경로. null = 표시할 스프라이트 없음(none/미로드).
+  let assetBase = null;
+
+  // curBase: 같은 애니라도 색(assetBase)이 바뀌면 재적용을 감지하려고 둔다.
   let curKey = null;
+  let curBase = null;
   let curAnim = ANIMATIONS.idle;
   let frame = 0;
   let frameElapsed = 0;
 
   function setAnim(key) {
-    if (key === curKey) return;
+    if (!assetBase) return; // 색 없음 → url(null) 방지
+    if (key === curKey && assetBase === curBase) return;
     curKey = key;
+    curBase = assetBase;
     curAnim = ANIMATIONS[key] || ANIMATIONS.idle;
     frame = 0;
     frameElapsed = 0;
-    pet.style.backgroundImage = `url(${ASSET_BASE}${curAnim.img})`;
+    pet.style.backgroundImage = `url(${assetBase}${curAnim.img})`;
     // 스트립 폭 = 프레임수 × 요소폭 → background-position-x 퍼센트로 프레임을 고른다(해상도 독립).
     pet.style.backgroundSize = `${curAnim.frames * 100}% 100%`;
     drawFrame();
@@ -71,6 +78,10 @@ export function initPetWindow() {
 
   function loop(ts) {
     rafId = requestAnimationFrame(loop);
+    if (!assetBase) {
+      last = ts; // 스프라이트 없음 → 안 그림(복귀 시 dt 튐 방지로 last 만 갱신)
+      return;
+    }
     if (last == null) last = ts;
     let dt = ts - last;
     last = ts;
@@ -115,6 +126,44 @@ export function initPetWindow() {
     else start();
   });
 
+  // 스트립 선로드 프로브. background-image 는 onerror 가 없어 이렇게 별도로 존재를 확인한다.
+  const preloadImage = (src) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error(`pet sprite load failed: ${src}`));
+      img.src = src;
+      if (img.complete && img.naturalWidth > 0) resolve(); // 캐시 즉시완료 폴백
+    });
+  // idle 하나만이 아니라 실제 재생할 스트립 전부를 확인해야 walk/sleep/react 중 투명 창이 안 뜬다.
+  const ANIM_IMGS = [...new Set(Object.values(ANIMATIONS).map((a) => a.img))];
+
+  let winVisible = false;
+
+  // 표시 컨트롤러(순수 로직) 배선. loadImage 는 4개 스트립을 모두 선로드(하나라도 없으면 reject → show 안 함).
+  const controller = makePetDisplayController({
+    loadImage: (base) => Promise.all(ANIM_IMGS.map((name) => preloadImage(base + name))),
+    show: () => {
+      if (!winVisible) {
+        winVisible = true;
+        getCurrentWindow?.().show?.().catch((err) => console.error("pet show failed:", err));
+      }
+      start();
+    },
+    hide: () => {
+      stop();
+      assetBase = null; // 재표시 시 render 로 다시 확정
+      if (winVisible) {
+        winVisible = false;
+        getCurrentWindow?.().hide?.().catch((err) => console.error("pet hide failed:", err));
+      }
+    },
+    render: (id) => {
+      assetBase = assetBaseFor(id); // 먼저 갱신 → setAnim 이 색 변화를 감지
+      setAnim(animKeyFor(behavior.getState().state));
+    },
+  });
+
   // --- 우클릭 메뉴 ---
   let menuOpen = false;
 
@@ -133,24 +182,14 @@ export function initPetWindow() {
     menuOpen = false;
   }
 
-  // 실제 표시 상태를 메인에 보고 — 버튼 상태의 유일한 기준.
-  async function reportShown() {
-    try {
-      const win = getCurrentWindow?.();
-      const visible = win ? await win.isVisible() : false;
-      await evapi?.emit?.("pet:shown", { shown: !!visible });
-    } catch (err) {
-      console.error("pet report visibility failed:", err);
-    }
-  }
-
+  // "Remove pet": 로컬로 숨기지 않고 제거 신호만 보낸다. 실제 숨김은 메인이 pref 를 none 으로
+  // 바꿔 되돌려주는 pet:set-cat 이 담당한다(펫 = pref 의 순수 투영).
   async function removePet() {
     closeMenu();
     try {
-      await getCurrentWindow?.().hide?.();
-      await reportShown(); // 숨김 반영 → 메인 버튼 동기화
+      await evapi?.emit?.("pet:removed");
     } catch (err) {
-      console.error("pet dismiss failed:", err);
+      console.error("pet remove emit failed:", err);
     }
   }
 
@@ -228,49 +267,45 @@ export function initPetWindow() {
   });
   window.addEventListener("blur", closeMenu);
 
-  // --- 브리지 이벤트 수신(메인 창 → 펫 창) ---
-  evapi?.listen?.("pet:message-arrived", () => behavior.react());
-  evapi?.listen?.("pet:unread", (e) => {
-    unread = e?.payload?.total || 0;
-    updateDot();
-    // 안 읽음이 있는 동안 놀람 유지, 확인(그 방 입장)해서 0 이 되면 해제 → 일상 동작 복귀.
-    behavior.setAlerting(unread > 0);
-  });
-  evapi?.listen?.("pet:main-focus", (e) => {
-    mainFocused = !!e?.payload?.focused;
-    updateDot();
-  });
-  // 토글: 펫 창이 자기 "실제" 표시 상태를 뒤집고 결과를 보고한다(메인은 결과만 반영).
-  evapi?.listen?.("pet:toggle", async () => {
-    try {
-      const win = getCurrentWindow?.();
-      if (!win) return;
-      if (await win.isVisible()) await win.hide();
-      else await win.show();
-      await reportShown();
-    } catch (err) {
-      console.error("pet toggle failed:", err);
-    }
-  });
-  // 조회: 메인이 현재 상태를 물으면 실제 표시 여부를 보고(메인 리로드 후 버튼 재동기화).
-  evapi?.listen?.("pet:query", () => reportShown());
-
-  // 부팅 시 항상 숨김(tauri.conf 의 visible:false 와 이중 보장). 준비되면 메인이 상태를 회신한다.
+  // --- 브리지 이벤트 수신 + 부팅 핸드셰이크 ---
+  // 리스너 등록을 기다린 뒤 pet:ready emit → 메인의 첫 pet:set-cat 을 놓치지 않는다.
   (async () => {
     try {
-      await getCurrentWindow?.().hide?.();
+      await getCurrentWindow?.().hide?.(); // 부팅 시 숨김(tauri.conf visible:false 와 이중 보장)
     } catch (err) {
       console.error("pet initial hide failed:", err);
     }
+
     try {
-      await evapi?.emit?.("pet:ready");
-    } catch {
-      // ignore
+      await Promise.all(
+        [
+          evapi?.listen?.("pet:message-arrived", () => behavior.react()),
+          evapi?.listen?.("pet:unread", (e) => {
+            unread = e?.payload?.total || 0;
+            updateDot();
+            // 안 읽음이 있는 동안 놀람 유지, 확인(그 방 입장)해서 0 이 되면 해제 → 일상 동작 복귀.
+            behavior.setAlerting(unread > 0);
+          }),
+          evapi?.listen?.("pet:main-focus", (e) => {
+            mainFocused = !!e?.payload?.focused;
+            updateDot();
+          }),
+          evapi?.listen?.("pet:set-cat", (e) => {
+            controller.setCat(normalizeCat(e?.payload?.catId));
+          }),
+        ].filter(Boolean),
+      );
+    } catch (err) {
+      // 등록 실패해도 finally 의 pet:ready 는 반드시 보낸다 → 메인의 kick 으로 복구 기회를 남긴다.
+      console.error("pet listener registration failed:", err);
+    } finally {
+      try {
+        await evapi?.emit?.("pet:ready");
+      } catch (err) {
+        console.error("pet ready emit failed:", err);
+      }
     }
   })();
-
-  setAnim("idle");
-  start();
 
   return { start, stop };
 }

@@ -30,9 +30,9 @@ dist-ssr
 src/config.local.js
 
 # Pet sprites — ToffeeCraft Cat Pochi (paid asset). License forbids redistributing
-# the raw art, so the PNGs stay out of this public repo. Place them locally per
-# src/assets/pet/README.md; release CI injects them at build time.
-src/assets/pet/*.png
+# the raw art, so the PNGs stay out of this public repo. Generate them locally with
+# `npm run slice:pets` (needs the CatMegaBundle source); release CI injects them at build time.
+src/assets/pet/**/*.png
 
 # Supabase CLI link state (local cache: project-ref, version metadata)
 supabase/.temp/
