@@ -211,17 +211,6 @@ body {
   text-decoration-thickness: 1px;
 }
 
-/* 펫 토글([^ω^]) — 얼굴 글리프가 넓어 폭만 자동으로 늘린다(높이/폰트는 공용값 상속).
-   펫 창이 숨김 상태면 흐리게 표시(mute 와 같은 관례). */
-.pet-btn {
-  width: auto;
-  letter-spacing: -0.06em;
-}
-
-.pet-btn.off {
-  opacity: 0.35;
-}
-
 /* textarea 바로 아래 중앙 */
 .save-btn {
   top: calc(var(--screen-top-pct) + var(--screen-height-pct) - 2.5%);
@@ -383,6 +372,73 @@ body {
 .menu-btn.disabled:hover {
   color: var(--crt-green);
   text-shadow: 0 0 6px rgba(0, 255, 65, 0.8);
+}
+
+/* ----- 펫 설정(색 고르기) ----- */
+/* .menu 중앙 정렬을 상단 정렬+스크롤로(목록이 길다). */
+.pet-settings {
+  justify-content: flex-start;
+  gap: 0.4em;
+}
+
+.pet-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  width: 82%;
+  max-height: 70%;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+/* .btn 기본 absolute 를 무력화한 가로 행(미리보기 + 라벨). */
+.pet-picker-item {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.15em 0.35em;
+  font-size: calc(var(--computer-width) / 30);
+  text-align: left;
+}
+
+.pet-picker-item:hover {
+  background: rgba(0, 255, 65, 0.08);
+}
+
+.pet-picker-item.active {
+  color: #fff;
+  text-shadow: 0 0 8px #fff;
+  background: rgba(0, 255, 65, 0.12);
+}
+
+/* idle 첫 프레임만 정지 표시(background-size 로 첫 칸). */
+.pet-preview {
+  flex: 0 0 auto;
+  width: calc(var(--computer-width) / 14);
+  aspect-ratio: 1 / 1;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  border: 1px solid rgba(0, 255, 65, 0.35);
+}
+
+/* 에셋 없음/none — 점선 + 가운데 글자('?'/OFF). */
+.pet-preview.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  font-size: calc(var(--computer-width) / 60);
+  opacity: 0.5;
+}
+
+.pet-preview.off {
+  opacity: 0.4;
+}
+
+.pet-picker-label {
+  flex: 1 1 auto;
+  letter-spacing: 0.03em;
 }
 
 /* ----- 닉네임 폼 / 로비 ----- */

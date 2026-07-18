@@ -14,6 +14,8 @@ import { lobbyView } from "./views/lobby-view.js";
 import { roomView } from "./views/room-view.js";
 import { loginView } from "./views/login-view.js";
 import { resetView } from "./views/reset-view.js";
+import { settingsView } from "./views/settings-view.js";
+import { petSettingsView } from "./views/pet-settings-view.js";
 import { getSession, onAuthChange } from "./auth/auth.js";
 import { clearLocalSession, getLastUid, setLastUid } from "./chat/session.js";
 import { messageNotifier } from "./chat/message-notifier.js";
@@ -51,7 +53,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initWindowControls(container);
   initSound();
   initScreenMode();
-  // 펫: 별도 펫 창으로 신호 중계 + 상단 토글 버튼 배선. 인증/채팅 설정과 무관하게 1회.
+  // 펫: 별도 펫 창으로 신호 중계 + 선택 색(pet-cat pref) 전달. 인증/채팅 설정과 무관하게 1회.
   initPetBridge();
   // 자동 업데이트 확인은 채팅 설정/라우팅과 무관하게 1회. await 하지 않아(fire-and-forget)
   // 네트워크 지연이 앱 시작/뷰 렌더를 막지 않는다. 내부에서 모든 실패를 흡수(best-effort).
@@ -63,16 +65,20 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   const screen = document.getElementById("screen");
   const homeBtn = document.getElementById("home-btn");
+  const settingsBtn = document.getElementById("settings-btn");
 
   // 상단 [≡] 버튼은 "한 단계 위" 뷰로 이동한다. 명시되지 않은 뷰는 home 으로.
   // note(편집기)는 항상 notes(목록)에서 진입하므로 목록으로 돌아가는 게 자연스럽다.
-  const PARENT_VIEW = { note: "notes" };
+  // pet-settings 는 settings 아래 단계이므로 settings 로 되돌아간다.
+  const PARENT_VIEW = { note: "notes", "pet-settings": "settings" };
   let currentView = null;
 
   // 홈/로그인/비번재설정 화면에서는 홈 버튼 숨김(세션 없는 상태에선 home 진입 금지).
+  // 설정 버튼도 로그인/리셋 화면에선 숨긴다 — settings→≡ 로 인증 게이트를 우회하지 못하게.
   const router = createRouter(screen, (name) => {
     currentView = name;
     if (homeBtn) homeBtn.hidden = name === "home" || name === "login" || name === "reset";
+    if (settingsBtn) settingsBtn.hidden = name === "login" || name === "reset";
   });
 
   router.register("home", homeView);
@@ -83,8 +89,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   router.register("room", roomView);
   router.register("login", loginView);
   router.register("reset", resetView);
+  router.register("settings", settingsView);
+  router.register("pet-settings", petSettingsView);
 
   if (homeBtn) homeBtn.addEventListener("click", () => router.navigate(PARENT_VIEW[currentView] || "home"));
+  if (settingsBtn) settingsBtn.addEventListener("click", () => router.navigate("settings"));
 
   // Supabase 설정된 경우만 auth를 강제한다. 미설정 시 NOTE만 사용하는 기존 흐름 유지.
   if (isChatConfigured()) {
