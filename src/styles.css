@@ -1332,3 +1332,8 @@ body.bezel-mode .cm-host {
   image-rendering: pixelated; /* 저해상도 장면(스타필드)의 굵은 픽셀 업스케일 */
 }
 
+.screen-wrap.screensaver-active .top-controls,
+.screen-wrap.screensaver-active .screen-mode-btn {
+  visibility: hidden;
+}
+

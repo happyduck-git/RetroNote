@@ -105,6 +105,18 @@ describe("initScreensaver 배선", () => {
     assert.ok(overlay.querySelector("canvas"), "오버레이 안에 canvas");
   });
 
+  test("발동 시 wrap 에 screensaver-active 클래스 부착, 해제 시 제거 (상단 버튼 숨김용)", () => {
+    initScreensaver();
+    const wrap = win.document.getElementById("computer-wrap");
+    assert.ok(!wrap.classList.contains("screensaver-active"));
+
+    win.__screensaver.show("starfield");
+    assert.ok(wrap.classList.contains("screensaver-active"));
+
+    win.__screensaver.hide();
+    assert.ok(!wrap.classList.contains("screensaver-active"));
+  });
+
   test("유휴 시간 미달 틱 → 발동 안 함", () => {
     initScreensaver();
     clock = IDLE_MS - 1;

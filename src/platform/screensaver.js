@@ -74,6 +74,8 @@ export function initScreensaver() {
     const canvas = document.createElement("canvas");
     overlay.appendChild(canvas);
     wrap.appendChild(overlay); // #screen 밖에 부착 — 뷰 전환이 일어나도 오버레이가 지워지지 않게
+    // 상단 버튼들은 화면 영역 밖(프레임 위)이라 오버레이가 못 덮는다 — 상태 클래스로 함께 숨김.
+    wrap.classList.add("screensaver-active");
     stopScene = (scene === "matrix" ? startMatrixRain : startStarfield)(canvas);
   };
 
@@ -82,6 +84,7 @@ export function initScreensaver() {
     stopScene = null;
     overlay?.remove();
     overlay = null;
+    wrap.classList.remove("screensaver-active");
     prevFocus?.focus?.(); // 뷰가 바뀌어 detach 됐으면 no-op — 안전
     prevFocus = null;
   };
