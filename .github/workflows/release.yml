@@ -57,6 +57,40 @@ jobs:
           };
           EOF
 
+      # 펫 스프라이트(ToffeeCraft, 유료)는 gitignore 로 레포에 없다 → 색별 Secret 에서 복원.
+      # Secret 6개: PET_SPRITES_{CREAM,GREY,BLACK,GREYWHITE,ORANGE,WHITE} = 각 색 폴더의 base64(tar.gz).
+      # macos-latest 러너도 bash 3.2 → bash 4 전용 문법(${var^^}·declare -A·mapfile) 금지.
+      - name: Inject pet sprites (paid asset)
+        shell: bash
+        env:
+          PET_CREAM: ${{ secrets.PET_SPRITES_CREAM }}
+          PET_GREY: ${{ secrets.PET_SPRITES_GREY }}
+          PET_BLACK: ${{ secrets.PET_SPRITES_BLACK }}
+          PET_GREYWHITE: ${{ secrets.PET_SPRITES_GREYWHITE }}
+          PET_ORANGE: ${{ secrets.PET_SPRITES_ORANGE }}
+          PET_WHITE: ${{ secrets.PET_SPRITES_WHITE }}
+        run: |
+          set -euo pipefail
+          mkdir -p src/assets/pet
+          inject() {   # $1 색 이름, $2 base64(tar.gz)
+            [ -n "$2" ] || { echo "::error::pet secret for $1 is empty"; exit 1; }
+            printf '%s' "$2" | base64 --decode | tar -xzf - -C src/assets/pet
+          }
+          inject cream     "$PET_CREAM"
+          inject grey      "$PET_GREY"
+          inject black     "$PET_BLACK"
+          inject greywhite "$PET_GREYWHITE"
+          inject orange    "$PET_ORANGE"
+          inject white     "$PET_WHITE"
+          missing=0
+          for c in cream grey black greywhite orange white; do
+            for f in Idle Running Sleeping Surprised; do
+              [ -f "src/assets/pet/$c/$f.png" ] || { echo "::error::missing src/assets/pet/$c/$f.png"; missing=1; }
+            done
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "pet sprites injected: 24 files OK"
+
       # 릴리스 노트 자동 생성: 병합된 PR 제목 기반 changelog(작성자·PR·이슈 번호 제거).
       # 생성·정리 로직은 scripts/format-release-notes.sh 에 있고 로컬 미리보기
       # (npm run notes:preview -- <tag> <branch>)와 이 스텝이 그대로 공유한다.
