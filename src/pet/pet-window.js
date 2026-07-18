@@ -138,17 +138,25 @@ export function initPetWindow() {
   // idle 하나만이 아니라 실제 재생할 스트립 전부를 확인해야 walk/sleep/react 중 투명 창이 안 뜬다.
   const ANIM_IMGS = [...new Set(Object.values(ANIMATIONS).map((a) => a.img))];
 
+  let winVisible = false;
+
   // 표시 컨트롤러(순수 로직) 배선. loadImage 는 4개 스트립을 모두 선로드(하나라도 없으면 reject → show 안 함).
   const controller = makePetDisplayController({
     loadImage: (base) => Promise.all(ANIM_IMGS.map((name) => preloadImage(base + name))),
     show: () => {
-      getCurrentWindow?.().show?.().catch((err) => console.error("pet show failed:", err));
+      if (!winVisible) {
+        winVisible = true;
+        getCurrentWindow?.().show?.().catch((err) => console.error("pet show failed:", err));
+      }
       start();
     },
     hide: () => {
       stop();
       assetBase = null; // 재표시 시 render 로 다시 확정
-      getCurrentWindow?.().hide?.().catch((err) => console.error("pet hide failed:", err));
+      if (winVisible) {
+        winVisible = false;
+        getCurrentWindow?.().hide?.().catch((err) => console.error("pet hide failed:", err));
+      }
     },
     render: (id) => {
       assetBase = assetBaseFor(id); // 먼저 갱신 → setAnim 이 색 변화를 감지
