@@ -1,8 +1,19 @@
-// Web Audio 기반 키스트로크 사운드 + 뮤트 토글. 뮤트 버튼(#mute-btn)은 index.html의 상시 크롬.
+// Web Audio 기반 키스트로크 사운드 + 뮤트 상태. 뮤트 토글 UI는 설정 화면(settings-view)에 있다.
 const SOUND_PATH = "assets/keypress.mp3";
 const MUTE_KEY = "retro-note.muted";
 
-let isMuted = localStorage.getItem(MUTE_KEY) === "true";
+let muted = localStorage.getItem(MUTE_KEY) === "true";
+
+export function isMuted() {
+  return muted;
+}
+
+// 토글 후 새 상태를 반환 — 설정 화면이 라벨 갱신에 사용. 즉시 localStorage 에 저장.
+export function toggleMute() {
+  muted = !muted;
+  localStorage.setItem(MUTE_KEY, String(muted));
+  return muted;
+}
 
 // 각 키스트로크가 독립 source 노드로 재생되어 빠른 연속 입력에 강함
 let audioCtx = null;
@@ -61,7 +72,7 @@ function fireSource() {
 }
 
 export function playKey() {
-  if (isMuted) return;
+  if (muted) return;
   ensureLoaded();
   if (!soundReady || !audioCtx || !audioBuffer) return;
   // 컨텍스트가 자고 있으면(suspended/interrupted) 깨운 뒤 재생해야 소리가 유실되지 않음.
@@ -76,7 +87,7 @@ export function playKey() {
         resumePending = false;
         // resume 이 resolve 돼도 WKWebView 의 "interrupted" 는 실제로 running 이 안 되는
         // 경우가 있어 소리가 유실됨 → 상태까지 확인. resume 도중 뮤트로 바뀌었을 수도 있어 재확인.
-        if (!isMuted && audioBuffer && audioCtx.state === "running") fireSource();
+        if (!muted && audioBuffer && audioCtx.state === "running") fireSource();
       })
       .catch(() => {
         resumePending = false;
@@ -92,17 +103,5 @@ export function initSound() {
   window.addEventListener("focus", resumeCtx);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) resumeCtx();
-  });
-  const muteBtn = document.getElementById("mute-btn");
-  if (!muteBtn) return;
-  const applyMuteUI = () => {
-    muteBtn.classList.toggle("muted", isMuted);
-    muteBtn.title = isMuted ? "Unmute" : "Mute";
-  };
-  applyMuteUI();
-  muteBtn.addEventListener("click", () => {
-    isMuted = !isMuted;
-    localStorage.setItem(MUTE_KEY, String(isMuted));
-    applyMuteUI();
   });
 }

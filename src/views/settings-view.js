@@ -1,5 +1,8 @@
-// 설정 화면: 설정 항목 목록. 지금은 [PET] 하나(음소거·화면모드는 상단 크롬에 그대로 둔다).
+// 설정 화면: 설정 항목 목록. [PET] 서브 화면 + [SOUND] 즉시 토글(뮤트 상태는 sound.js 소유).
 import { el } from "../core/dom.js";
+import { isMuted, toggleMute, playKey } from "../platform/sound.js";
+
+const soundLabel = () => `[ SOUND: ${isMuted() ? "OFF" : "ON"} ]`;
 
 export const settingsView = {
   mount(screenEl, params, ctx) {
@@ -9,6 +12,15 @@ export const settingsView = {
       text: "[ PET ]",
       onClick: () => ctx.navigate("pet-settings"),
     });
-    screenEl.append(el("div", { class: "menu" }, [title, petBtn]));
+    const soundBtn = el("button", {
+      class: "btn menu-btn",
+      text: soundLabel(),
+      onClick: () => {
+        toggleMute();
+        soundBtn.textContent = soundLabel();
+        playKey(); // 켰으면 타건음이 확인음, 껐으면 playKey 의 뮤트 가드로 무음
+      },
+    });
+    screenEl.append(el("div", { class: "menu" }, [title, petBtn, soundBtn]));
   },
 };

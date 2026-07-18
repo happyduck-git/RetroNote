@@ -104,7 +104,7 @@ function installGlobals({ muted = false, fetchImpl, AudioCtor } = {}) {
   };
   globalThis.fetch = fetchImpl;
   globalThis.window = { AudioContext: AudioCtor, addEventListener() {} };
-  globalThis.document = { addEventListener() {}, getElementById: () => null, hidden: false };
+  globalThis.document = { addEventListener() {}, hidden: false };
   restore = () => {
     globalThis.window = orig.window;
     globalThis.fetch = orig.fetch;
@@ -125,8 +125,22 @@ describe("sound — 뮤트", () => {
     const { playKey } = await loadSound();
     playKey();
     await flush();
-    assert.equal(rec.fetches, 0); // isMuted 단락 → ensureLoaded 도달 안 함
+    assert.equal(rec.fetches, 0); // 뮤트 단락 → ensureLoaded 도달 안 함
     assert.equal(rec.starts, 0);
+  });
+
+  test("toggleMute 는 상태를 뒤집어 저장하고 playKey 를 차단한다", async () => {
+    const rec = newRecords();
+    installGlobals({ fetchImpl: okFetch(rec), AudioCtor: makeAudioCtor(rec) });
+    const { playKey, isMuted, toggleMute } = await loadSound();
+    assert.equal(isMuted(), false);
+    assert.equal(toggleMute(), true);
+    assert.equal(globalThis.localStorage.getItem("retro-note.muted"), "true"); // 재시작 복원용 저장
+    playKey();
+    await flush();
+    assert.equal(rec.starts, 0); // 뮤트 중 재생 차단
+    assert.equal(toggleMute(), false);
+    assert.equal(globalThis.localStorage.getItem("retro-note.muted"), "false");
   });
 });
 
@@ -231,21 +245,11 @@ describe("sound — 연타/뮤트 경계", () => {
       fetchImpl: okFetch(rec),
       AudioCtor: makeAudioCtor(rec, { initialState: "suspended", resumeTo: "running", asyncResume: true }),
     });
-    // 뮤트 버튼 fake 를 심어 initSound 가 클릭 핸들러를 배선하게 한다.
-    let clickMute = null;
-    const btn = {
-      classList: { toggle() {} },
-      title: "",
-      addEventListener: (ev, fn) => {
-        if (ev === "click") clickMute = fn;
-      },
-    };
-    globalThis.document.getElementById = (id) => (id === "mute-btn" ? btn : null);
-    const { playKey, initSound } = await loadSound();
-    initSound(); // 로딩 시작 + 뮤트 버튼 배선
+    const { playKey, initSound, toggleMute } = await loadSound();
+    initSound(); // 로딩 시작
     await flush(); // 로드 완료(suspended)
     playKey(); // resume + .then(fireSource) 예약
-    clickMute(); // resume 완료 전에 뮤트 ON
+    toggleMute(); // resume 완료 전에 뮤트 ON
     await flush();
     assert.ok(rec.resumeCalls >= 1);
     assert.equal(rec.starts, 0); // 뮤트로 바뀌어 재생 안 함

@@ -1,7 +1,7 @@
 /* Galmuri11 한글 글리프를 VT323(영어) 시각 크기에 맞추는 보정 폰트.
    Galmuri11 은 11px 비트맵이라 기본 x-height 가 VT323 보다 큼 → size-adjust 로 축소.
-   unicode-range 로 한글 영역만 담당 → ≡ ♪ 같은 기호는 폰트 스택의 다음 폰트(Courier New)로 폴백되어
-   기존 baseline 그대로 유지(예: top-controls 의 [≡][♪]가 괄호 밖으로 솟지 않도록). */
+   unicode-range 로 한글 영역만 담당 → ≡ ⛶ 같은 기호는 폰트 스택의 다음 폰트(Courier New)로 폴백되어
+   기존 baseline 그대로 유지(예: 상단 크롬의 [≡][⛶]가 괄호 밖으로 솟지 않도록). */
 @font-face {
   font-family: "Galmuri11Adj";
   font-style: normal;
@@ -203,12 +203,6 @@ body {
 /* display:inline-flex 가 [hidden] 기본 규칙을 덮어쓰지 않도록 보정 */
 .top-controls .btn[hidden] {
   display: none;
-}
-
-.mute-btn.muted {
-  opacity: 0.35;
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
 }
 
 /* textarea 바로 아래 중앙 */
