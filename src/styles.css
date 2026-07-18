@@ -1304,6 +1304,13 @@ body.bezel-mode .resize-grip {
   bottom: 0.6%;
 }
 
+body.bezel-mode .room,
+body.bezel-mode .note-list,
+body.bezel-mode #note,
+body.bezel-mode .cm-host {
+  padding-top: calc(var(--computer-width) / 26);
+}
+
 /* 화면 모드 토글 버튼 — 켜짐(베젤 화면) 상태 강조. mute-btn.muted 와 같은 상시-크롬 방식. */
 .screen-mode-btn.active {
   color: #fff;
