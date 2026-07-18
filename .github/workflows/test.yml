@@ -1,0 +1,52 @@
+name: Test
+
+# 저장소 최초의 테스트 CI. 유닛 + jsdom 배선 테스트(node --test)와 Playwright E2E 를
+# PR/메인 푸시마다 돌려 회귀를 자동으로 잡는다. 릴리스/빌드 워크플로(release.yml,
+# build-windows.yml)와 독립적이다. unit 과 e2e 는 별도 잡이라 실패 원인이 섞이지 않는다.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 순수 JS(jsdom 은 네이티브 빌드 없음)라 OS 무관 — ubuntu 에서 실행.
+      - name: Run unit tests
+        run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 브라우저 + 시스템 의존성 설치(ubuntu 러너, 패스워드리스 sudo). chromium 만.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # esbuild servedir 로 src/ 를 서빙(playwright.config.js 의 webServer)하고 실제 Chromium 구동.
+      - name: Run E2E tests
+        run: npm run test:e2e

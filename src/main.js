@@ -4,6 +4,7 @@ import { createRouter } from "./core/router.js";
 import { initWindowControls } from "./platform/window-controls.js";
 import { initSound } from "./platform/sound.js";
 import { initScreenMode } from "./platform/screen-mode.js";
+import { initScreensaver } from "./platform/screensaver.js";
 import { initPetBridge } from "./pet/bridge.js";
 import { checkForUpdate } from "./platform/updater.js";
 import { homeView } from "./views/home-view.js";
@@ -53,6 +54,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initWindowControls(container);
   initSound();
   initScreenMode();
+  initScreensaver();
   // 펫: 별도 펫 창으로 신호 중계 + 선택 색(pet-cat pref) 전달. 인증/채팅 설정과 무관하게 1회.
   initPetBridge();
   // 자동 업데이트 확인은 채팅 설정/라우팅과 무관하게 1회. await 하지 않아(fire-and-forget)

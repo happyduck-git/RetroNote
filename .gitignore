@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Playwright E2E 산출물(test:e2e) — 리포트/트레이스/스크린샷, 다운로드된 브라우저
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
