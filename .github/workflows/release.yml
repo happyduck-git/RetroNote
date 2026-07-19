@@ -57,6 +57,33 @@ jobs:
           };
           EOF
 
+      # 펫 스프라이트(ToffeeCraft, 유료)는 gitignore 로 공개 레포에 없다 → private 에셋 레포에서 복원.
+      - name: Checkout pet sprites (paid asset, private repo)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.PET_ASSETS_REPO }}
+          ssh-key: ${{ secrets.PET_ASSETS_DEPLOY_KEY }}
+          path: .pet-assets
+          persist-credentials: false
+
+      - name: Copy pet sprites into place
+        shell: bash
+        run: |
+          set -euo pipefail
+          for c in cream grey black greywhite orange white; do
+            mkdir -p "src/assets/pet/$c"
+            cp ".pet-assets/$c/"*.png "src/assets/pet/$c/"
+          done
+          missing=0
+          for c in cream grey black greywhite orange white; do
+            for f in Idle Excited Dead Sleeping Happy Running Jump Box1 Box2 Box3 \
+                     Crying Dance Chilling Surprised Tickle Dead1 Dead2 Hurt Attack; do
+              [ -f "src/assets/pet/$c/$f.png" ] || { echo "::error::missing src/assets/pet/$c/$f.png"; missing=1; }
+            done
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "pet sprites injected: 114 files OK"
+
       # 릴리스 노트 자동 생성: 병합된 PR 제목 기반 changelog(작성자·PR·이슈 번호 제거).
       # 생성·정리 로직은 scripts/format-release-notes.sh 에 있고 로컬 미리보기
       # (npm run notes:preview -- <tag> <branch>)와 이 스텝이 그대로 공유한다.
