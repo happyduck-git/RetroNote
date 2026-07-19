@@ -77,12 +77,13 @@ jobs:
           done
           missing=0
           for c in cream grey black greywhite orange white; do
-            for f in Idle Running Sleeping Surprised; do
+            for f in Idle Excited Dead Sleeping Happy Running Jump Box1 Box2 Box3 \
+                     Crying Dance Chilling Surprised Tickle Dead1 Dead2 Hurt Attack; do
               [ -f "src/assets/pet/$c/$f.png" ] || { echo "::error::missing src/assets/pet/$c/$f.png"; missing=1; }
             done
           done
           [ "$missing" -eq 0 ] || exit 1
-          echo "pet sprites injected: 24 files OK"
+          echo "pet sprites injected: 114 files OK"
 
       # 릴리스 노트 자동 생성: 병합된 PR 제목 기반 changelog(작성자·PR·이슈 번호 제거).
       # 생성·정리 로직은 scripts/format-release-notes.sh 에 있고 로컬 미리보기

@@ -1,14 +1,16 @@
 // 펫 스프라이트 자르기 (개발용, 1회성). CatMegaBundle/Pochi 의 통합 시트(AllCats*.png)에서
-// 필요한 4개 애니메이션 스트립(Idle/Running/Sleeping/Surprised)을 색상별로 잘라
-// src/assets/pet/<catId>/*.png 로 저장한다. PNG 는 유료 에셋이라 레포엔 안 들어간다(gitignore).
+// 19개 동작 스트립 전부를 색상별로 잘라 src/assets/pet/<catId>/*.png 로 저장한다.
+// PNG 는 유료 에셋이라 레포엔 안 들어간다(gitignore).
 //
-// 격자: 시트는 1024×1216, 64px 셀의 16열×19행. 아래 행/열 인덱스는 기본색 시트(AllCats.png)와
-// repo 의 기존 기본색 스트립(/Pochi/Sprites/*.png)을 픽셀 대조해 확정했다(모든 색 시트가 동일 배치):
-//   Idle      → row 0,  cols 0..5      (avgDiff 0.01/255)
-//   Running   → row 5,  cols 0..5      (avgDiff 1.25/255)
-//   Sleeping  → row 3,  cols 0..3      (avgDiff 0.00/255)
-//   Surprised → row 13, cols 0,0,1,1   (시트엔 2프레임뿐 → 기존 4프레임 스트립의 [A,A,B,B] 재현)
-// 셀 단위 명시 매핑이라 Surprised 의 반복 패턴까지 정확히 재현된다.
+// 격자: 시트는 1024×1216, 64px 셀의 16열×19행 = 한 줄이 한 동작(19줄=19동작, 1:1).
+// 행 인덱스는 코드로 알 수 없어(비자명) 아래에 남긴다 — /Pochi/Sprites/<Name>.png(크림)를
+// 시트 줄과 픽셀 대조해 확정했다(모든 색 시트가 동일 배치):
+//   row 0  Idle(0..5)      row 5  Running(0..5)    row 10 Crying(0..3)       row 15 Dead1(0..5)
+//   row 1  Excited(0..2)   row 6  Jump(0..11)      row 11 Dance(0..3)        row 16 Dead2(0..4)
+//   row 2  Dead(0)         row 7  Box1(0..11)      row 12 Chilling(0..7)     row 17 Hurt(0..7)
+//   row 3  Sleeping(0..3)  row 8  Box2(0..9)       row 13 Surprised(0,0,1,1) row 18 Attack(0..6)
+//   row 4  Happy(0..9)     row 9  Box3(0..11)      row 14 Tickle(0..3)
+// Surprised 만 특수: 시트엔 2프레임뿐 → 4프레임 [A,A,B,B] 재현(cols 0,0,1,1). 나머지는 cols 0..(프레임수-1).
 //
 // 사용: node scripts/slice-pet-sprites.mjs [--src <dir>]   (또는 PET_SRC 환경변수)
 //   자동검증은 "치수/비어있음"만 잡는다. 의미상 올바른 행인지는 못 잡으므로,
@@ -24,9 +26,24 @@ const CELL = 64;
 // 애니메이션 = 시트의 (row, [col...]) 셀 목록. 순서대로 가로로 이어 붙여 스트립을 만든다.
 const ANIMS = [
   { out: "Idle.png", row: 0, cols: [0, 1, 2, 3, 4, 5] },
-  { out: "Running.png", row: 5, cols: [0, 1, 2, 3, 4, 5] },
+  { out: "Excited.png", row: 1, cols: [0, 1, 2] },
+  { out: "Dead.png", row: 2, cols: [0] },
   { out: "Sleeping.png", row: 3, cols: [0, 1, 2, 3] },
+  { out: "Happy.png", row: 4, cols: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  { out: "Running.png", row: 5, cols: [0, 1, 2, 3, 4, 5] },
+  { out: "Jump.png", row: 6, cols: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  { out: "Box1.png", row: 7, cols: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  { out: "Box2.png", row: 8, cols: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  { out: "Box3.png", row: 9, cols: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  { out: "Crying.png", row: 10, cols: [0, 1, 2, 3] },
+  { out: "Dance.png", row: 11, cols: [0, 1, 2, 3] },
+  { out: "Chilling.png", row: 12, cols: [0, 1, 2, 3, 4, 5, 6, 7] },
   { out: "Surprised.png", row: 13, cols: [0, 0, 1, 1] },
+  { out: "Tickle.png", row: 14, cols: [0, 1, 2, 3] },
+  { out: "Dead1.png", row: 15, cols: [0, 1, 2, 3, 4, 5] },
+  { out: "Dead2.png", row: 16, cols: [0, 1, 2, 3, 4] },
+  { out: "Hurt.png", row: 17, cols: [0, 1, 2, 3, 4, 5, 6, 7] },
+  { out: "Attack.png", row: 18, cols: [0, 1, 2, 3, 4, 5, 6] },
 ];
 
 // catId ↔ 통합 시트 파일(아래 assert 로 cats.js 카탈로그와 동기 강제).
@@ -138,4 +155,6 @@ fs.writeFileSync(contactPath, PNG.sync.write(contact));
 
 console.log(`\n${ok} strips written (${SHEETS.length} colors × ${ANIMS.length} anims).`);
 console.log(`육안 확인(필수): ${contactPath}`);
-console.log("  행 = 색(cream/grey/black/greywhite/orange/white), 열 = Idle|Running|Sleeping|Surprised");
+console.log(
+  `  행 = 색(${SHEETS.map((s) => s.catId).join("/")}), 열 = ${ANIMS.map((a) => a.out.replace(/\.png$/, "")).join("|")}`,
+);
