@@ -84,6 +84,19 @@ jobs:
           [ "$missing" -eq 0 ] || exit 1
           echo "pet sprites injected: 114 files OK"
 
+      # 장난감/밥(공·밥, 유료)도 gitignore 로 공개 레포에 없다 → 같은 private 에셋 레포의 toys/ 에서 복원.
+      - name: Copy cat toys into place
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src/assets/toys
+          cp ".pet-assets/toys/"* src/assets/toys/
+          for f in ball-blue.gif ball-orange.gif ball-pink.gif mouse.gif feather.gif \
+                   food-catfood.png food-fish.png food-bowl.png; do
+            [ -f "src/assets/toys/$f" ] || { echo "::error::missing src/assets/toys/$f"; exit 1; }
+          done
+          echo "cat toys injected: 8 files OK"
+
       # 릴리스 노트 자동 생성: 병합된 PR 제목 기반 changelog(작성자·PR·이슈 번호 제거).
       # 생성·정리 로직은 scripts/format-release-notes.sh 에 있고 로컬 미리보기
       # (npm run notes:preview -- <tag> <branch>)와 이 스텝이 그대로 공유한다.

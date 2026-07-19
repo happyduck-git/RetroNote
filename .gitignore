@@ -40,6 +40,10 @@ src/config.local.js
 # `npm run slice:pets` (needs the CatMegaBundle source); release CI injects them at build time.
 src/assets/pet/**/*.png
 
+# Cat toy assets (공/밥 — CatMegaBundle 유료 에셋). 펫 스프라이트와 같은 라이선스라
+# 공개 레포에 두지 않는다. 로컬은 CatMegaBundle 에서 복사, 릴리스 CI 가 사설 레포에서 주입.
+src/assets/toys/*
+
 # Supabase CLI link state (local cache: project-ref, version metadata)
 supabase/.temp/
 supabase/.branches/

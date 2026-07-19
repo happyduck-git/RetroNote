@@ -125,3 +125,172 @@ describe("펫 behavior — walk 이동/경계", () => {
     assert.ok(x >= 0 && x <= 1, `x 가 범위를 벗어남: ${x}`);
   });
 });
+
+// approach 가 끝나 상호작용이 종료될 때까지 tick 을 돌린다(테스트용 안전장치).
+function runUntil(b, wanted, cap = 200) {
+  let n = 0;
+  while (b.getState().state !== wanted && n++ < cap) b.tick(100);
+  return b.getState().state;
+}
+
+describe("펫 behavior — 쓰다듬기(stroke)", () => {
+  test("stroke() 로 petting 이 되고 pettingMs 후 idle 로 복귀", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { pettingMs: 500 } });
+    b.stroke();
+    assert.equal(b.getState().state, "petting");
+    b.tick(500);
+    assert.equal(b.getState().state, "idle");
+  });
+
+  test("지속 알림 중 쓰다듬기: petting 재생 후 다시 놀람(react)으로 복귀", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { pettingMs: 500 } });
+    b.setAlerting(true); // 놀람 고정
+    b.stroke();
+    assert.equal(b.getState().state, "petting");
+    b.tick(500);
+    assert.equal(b.getState().state, "react"); // 알림 여전 → 놀람 복귀
+  });
+
+  test("상호작용 중 react() 는 무시된다(방해 안 함)", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { pettingMs: 1000 } });
+    b.stroke();
+    b.react();
+    assert.equal(b.getState().state, "petting");
+  });
+});
+
+describe("펫 behavior — 먹이주기(feed)", () => {
+  test("feed(tx) → 목표로 걸어가 eat 후 idle 로 복귀", () => {
+    const b = makePetBehavior({
+      rng: () => 0.5,
+      config: { approachSpeed: 1, catchDist: 0.06, eatMs: 500, idleMin: 0, idleMax: 0 },
+    });
+    b.feed(0.9); // x=0.5 → 목표 0.9
+    assert.equal(b.getState().state, "approach");
+    assert.equal(runUntil(b, "eat"), "eat"); // 도달 → 먹기
+    b.tick(500); // eat 만료
+    assert.equal(b.getState().state, "idle");
+  });
+});
+
+describe("펫 behavior — 장난치기(play)", () => {
+  test("play(tx) → 다가가 leap(도약) → excited → idle", () => {
+    const b = makePetBehavior({
+      rng: () => 0.5,
+      config: { approachSpeed: 1, catchDist: 0.06, leapMs: 300, excitedMs: 300, idleMin: 0, idleMax: 0 },
+    });
+    b.play(0.9);
+    assert.equal(b.getState().state, "approach");
+    assert.equal(runUntil(b, "leap"), "leap");
+    b.tick(300); // leap 만료 → 신남
+    assert.equal(b.getState().state, "excited");
+    b.tick(300); // 신남 만료 → 복귀
+    assert.equal(b.getState().state, "idle");
+  });
+
+  test("setTarget 으로 움직이는 공을 쫓다가 잡으면 leap", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { approachSpeed: 2, catchDist: 0.06 } });
+    b.play(1.0); // 처음엔 오른쪽 끝을 목표
+    // 공이 왼쪽으로 굴러가는 상황을 흉내: 매 tick 목표를 0 으로 갱신 → 펫이 쫓아가 잡음
+    let n = 0;
+    while (b.getState().state === "approach" && n++ < 200) {
+      b.setTarget(0.0);
+      b.tick(50);
+    }
+    assert.equal(b.getState().state, "leap");
+  });
+
+  test("제한시간 안에 공을 못 잡으면 포기하고 idle", () => {
+    const b = makePetBehavior({
+      rng: () => 0.5,
+      config: { approachSpeed: 0.001, catchDist: 0, approachTimeoutMs: 200, idleMin: 0, idleMax: 0 },
+    });
+    b.play(1.0);
+    b.tick(200); // 타임아웃
+    assert.equal(b.getState().state, "idle");
+  });
+});
+
+describe("펫 behavior — 쓰다듬기 심화(tier)", () => {
+  test("tier 1/2/3 는 각각 petting / pettingHappy / pettingExcited", () => {
+    const b = makePetBehavior({ rng: () => 0.5 });
+    b.stroke(1);
+    assert.equal(b.getState().state, "petting");
+    b.stroke(2);
+    assert.equal(b.getState().state, "pettingHappy");
+    b.stroke(3);
+    assert.equal(b.getState().state, "pettingExcited");
+  });
+
+  test("심화 상태도 pettingMs 후 idle 로 복귀", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { pettingMs: 400 } });
+    b.stroke(3);
+    b.tick(400);
+    assert.equal(b.getState().state, "idle");
+  });
+});
+
+describe("펫 behavior — 낚싯대(swat)", () => {
+  test("swat → 다가가 pounce 후 신남 없이 바로 idle(재추격은 호출부 몫)", () => {
+    const b = makePetBehavior({
+      rng: () => 0.5,
+      config: { approachSpeed: 1, catchDist: 0.06, pounceMs: 300, idleMin: 0, idleMax: 0 },
+    });
+    b.swat(0.9);
+    assert.equal(runUntil(b, "pounce"), "pounce");
+    b.tick(300); // pounce 만료 → excited 없이 idle
+    assert.equal(b.getState().state, "idle");
+  });
+
+  test("이미 닿을 거리면 걷기 없이 바로 pounce(연타)", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { catchDist: 0.06 } });
+    b.swat(0.52); // x=0.5 와의 거리 0.02 ≤ catchDist → approach 건너뛰고 즉시 pounce
+    assert.equal(b.getState().state, "pounce");
+  });
+});
+
+describe("펫 behavior — 스스로 하는 행동(chilling/dancing)", () => {
+  test("idle 에서 chilling 으로 전이하고 시간이 지나면 idle 로 복귀", () => {
+    const b = makePetBehavior({
+      rng: seq([0, 0.8, 0]), // ctor idle(0) → chooseFromIdle=0.8(chill 구간) → chill duration
+      config: { idleMin: 0, idleMax: 0, chillMin: 500, chillMax: 500 },
+    });
+    b.tick(10); // idle 만료 → chilling
+    assert.equal(b.getState().state, "chilling");
+    b.tick(500);
+    assert.equal(b.getState().state, "idle");
+  });
+
+  test("idle 에서 dancing 으로 전이한다", () => {
+    const b = makePetBehavior({
+      rng: seq([0, 0.9, 0]), // 0.9 는 dance 구간(0.87~0.93)
+      config: { idleMin: 0, idleMax: 0, danceMin: 500, danceMax: 500 },
+    });
+    b.tick(10);
+    assert.equal(b.getState().state, "dancing");
+  });
+
+  test("지속 알림 중엔 스스로 행동으로 빠지지 않는다(놀람 고정)", () => {
+    const b = makePetBehavior({ rng: seq([0, 0.8, 0]), config: { idleMin: 0, idleMax: 0 } });
+    b.setAlerting(true);
+    for (let i = 0; i < 50; i++) b.tick(1000);
+    assert.equal(b.getState().state, "react");
+  });
+});
+
+describe("펫 behavior — 상자(box)", () => {
+  test("box() → boxed 상태로 들어가고 시간이 지나면 idle 로 복귀", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { boxMin: 500, boxMax: 500 } });
+    b.box();
+    assert.equal(b.getState().state, "boxed");
+    b.tick(500);
+    assert.equal(b.getState().state, "idle");
+  });
+
+  test("상자 안(boxed)은 상호작용이라 react() 로 방해받지 않는다", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { boxMin: 2000, boxMax: 2000 } });
+    b.box();
+    b.react();
+    assert.equal(b.getState().state, "boxed");
+  });
+});
