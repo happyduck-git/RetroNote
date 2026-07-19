@@ -283,9 +283,15 @@ export function makePetBehavior({ rng = Math.random, config = {} } = {}) {
     duration = pick(C.boxMin, C.boxMax);
   }
 
+  // 창이 숨겨질 때 상호작용 상태를 털어낸다 → 재표시 시 아이템 없는 잔여 동작이 재생되지 않게.
+  // 안 읽음이 남아 있으면 놀람으로, 아니면 일상으로 복귀.
+  function reset() {
+    returnFromInteraction();
+  }
+
   function getState() {
     return { state, x, facing };
   }
 
-  return { tick, react, setAlerting, getState, stroke, feed, play, swat, setTarget, box };
+  return { tick, react, setAlerting, getState, stroke, feed, play, swat, setTarget, box, reset };
 }

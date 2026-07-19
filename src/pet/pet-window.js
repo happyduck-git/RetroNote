@@ -119,13 +119,14 @@ export function initPetWindow() {
   let ballSpeed = 0; // 이번 장난감 속도(공/쥐 다름)
   let foodActive = false;
   let wandActive = false;
+  let boxActive = false;
 
   // 커서(낚싯대·하트 위치용). stage 는 창 전체(0,0)라 clientX/Y 를 그대로 쓴다.
   let cursorX = 0; // clientX
   let cursorY = 0; // clientY
   let cursorNX = 0.5; // 펫 좌표계로 환산한 정규화 x
 
-  const itemBusy = () => ballActive || foodActive || wandActive;
+  const itemBusy = () => ballActive || foodActive || wandActive || boxActive;
 
   // 아이템을 창 폭에 맞춰 바닥의 nx(0~1) 위치에 놓는다(스프라이트 폭만큼 범위 축소).
   function placeItem(elm, nx) {
@@ -183,6 +184,7 @@ export function initPetWindow() {
   // 상자: 고양이가 상자에 쏙 들어가 논다(별도 DOM 없음, 상자는 스프라이트에 그려져 있음).
   function tryBox() {
     if (!assetBase || itemBusy()) return;
+    boxActive = true;
     behavior.box();
   }
 
@@ -232,6 +234,7 @@ export function initPetWindow() {
     if (foodActive && state !== "approach" && state !== "eat") {
       clearFood(); // 다 먹음(eat 종료) → 밥 사라짐
     }
+    if (boxActive && state !== "boxed") boxActive = false; // 상자에서 나옴 → 배타 해제
     // 낚싯대 재추격은 루프 상단(렌더 전)에서 처리한다 — idle 프레임 깜빡임 방지.
   }
 
@@ -378,6 +381,14 @@ export function initPetWindow() {
       clearBall(); // 떠 있던 상호작용 아이템 정리(제거/색변경 시 잔상 방지)
       clearFood();
       endWand();
+      boxActive = false;
+      behavior.reset(); // 진행 중이던 상호작용 상태를 idle 로 → 재표시 시 잔여 동작 방지
+      if (petResetId != null) {
+        clearTimeout(petResetId);
+        petResetId = null;
+      }
+      petCount = 0; // 쓰다듬기 강도 누적이 다음 표시로 새지 않게
+      hearts.replaceChildren(); // 애니 중이던 하트 잔여 제거
       assetBase = null; // 재표시 시 render 로 다시 확정
       if (winVisible) {
         winVisible = false;
@@ -389,6 +400,10 @@ export function initPetWindow() {
       setAnim(animKeyFor(behavior.getState().state));
     },
   });
+
+  // 진행 중 제스처(드래그/리사이즈/낚싯대 클릭)의 임시 window 리스너 정리자.
+  // mouseup 을 놓쳐도(누른 채 포커스 상실) blur 에서 정리해, hover 만으로 창이 끌려가는 누수를 막는다.
+  let cancelGesture = null;
 
   // --- 우클릭 메뉴 ---
   let menuOpen = false;
@@ -432,11 +447,16 @@ export function initPetWindow() {
 
     if (wandActive) {
       // 낚싯대 노는 중: 클릭 한 번으로 그만두기(드래그·쓰다듬기 없음).
-      const onWandUp = () => {
+      const cleanup = () => {
         window.removeEventListener("mouseup", onWandUp);
+        cancelGesture = null;
+      };
+      const onWandUp = () => {
+        cleanup();
         endWand();
       };
       window.addEventListener("mouseup", onWandUp);
+      cancelGesture = cleanup;
       return;
     }
 
@@ -447,6 +467,7 @@ export function initPetWindow() {
     const cleanup = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      cancelGesture = null;
     };
     const onMove = (ev) => {
       if (dragging) return;
@@ -464,6 +485,7 @@ export function initPetWindow() {
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    cancelGesture = cleanup;
   });
 
   // 리사이즈 그립 — window-controls.js 와 같은 수동 방식(현재 크기 + 화면좌표 델타 → setSize, rAF 스로틀).
@@ -506,9 +528,11 @@ export function initPetWindow() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (rafId != null) cancelAnimationFrame(rafId);
+      cancelGesture = null;
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    cancelGesture = onUp;
   });
 
   // 우클릭 → 기본 메뉴 막고 커스텀 메뉴 표시.
@@ -543,7 +567,10 @@ export function initPetWindow() {
       endWand();
     }
   });
-  window.addEventListener("blur", closeMenu);
+  window.addEventListener("blur", () => {
+    closeMenu();
+    if (cancelGesture) cancelGesture();
+  });
 
   // --- 브리지 이벤트 수신 + 부팅 핸드셰이크 ---
   // 리스너 등록을 기다린 뒤 pet:ready emit → 메인의 첫 pet:set-cat 을 놓치지 않는다.

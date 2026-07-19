@@ -294,3 +294,54 @@ describe("펫 behavior — 상자(box)", () => {
     assert.equal(b.getState().state, "boxed");
   });
 });
+
+describe("펫 behavior — 상호작용 중 알림 교차(새 상태들)", () => {
+  test("먹는 중 알림 도착: 먹기 안 끊기고, 끝난 뒤 idle 아닌 react 로 복귀", () => {
+    const b = makePetBehavior({
+      rng: () => 0.5,
+      config: { approachSpeed: 1, catchDist: 0.06, eatMs: 500, idleMin: 0, idleMax: 0 },
+    });
+    b.feed(0.9);
+    runUntil(b, "eat");
+    b.setAlerting(true); // 상호작용 중이면 상태 안 바꾸고 플래그만
+    assert.equal(b.getState().state, "eat"); // 먹기 유지
+    b.tick(500); // eat 만료
+    assert.equal(b.getState().state, "react"); // 알림 남음 → 놀람 복귀
+  });
+
+  test("장난치기 신남(excited) 중 알림: 끝난 뒤 react 로 복귀", () => {
+    const b = makePetBehavior({
+      rng: () => 0.5,
+      config: { approachSpeed: 1, catchDist: 0.06, leapMs: 300, excitedMs: 300, idleMin: 0, idleMax: 0 },
+    });
+    b.play(0.9);
+    runUntil(b, "excited");
+    b.setAlerting(true);
+    b.tick(300); // excited 만료
+    assert.equal(b.getState().state, "react");
+  });
+
+  test("상자 놀이 중 알림: 나올 때 idle 아닌 react 로 복귀", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { boxMin: 500, boxMax: 500 } });
+    b.box();
+    b.setAlerting(true); // boxed 는 INTERACTION → 상태 유지
+    assert.equal(b.getState().state, "boxed");
+    b.tick(500); // boxed 만료
+    assert.equal(b.getState().state, "react");
+  });
+
+  test("reset() 은 상호작용 상태를 idle 로 되돌린다(알림 없을 때)", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { boxMin: 9999, boxMax: 9999 } });
+    b.box();
+    b.reset();
+    assert.equal(b.getState().state, "idle");
+  });
+
+  test("reset() 은 알림이 남아 있으면 react 로 되돌린다", () => {
+    const b = makePetBehavior({ rng: () => 0.5, config: { eatMs: 9999 } });
+    b.feed(0.5); // 같은 위치 → 즉시 approach
+    b.setAlerting(true);
+    b.reset();
+    assert.equal(b.getState().state, "react");
+  });
+});
