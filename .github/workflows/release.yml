@@ -57,31 +57,24 @@ jobs:
           };
           EOF
 
-      # 펫 스프라이트(ToffeeCraft, 유료)는 gitignore 로 레포에 없다 → 색별 Secret 에서 복원.
-      # Secret 6개: PET_SPRITES_{CREAM,GREY,BLACK,GREYWHITE,ORANGE,WHITE} = 각 색 폴더의 base64(tar.gz).
-      # macos-latest 러너도 bash 3.2 → bash 4 전용 문법(${var^^}·declare -A·mapfile) 금지.
-      - name: Inject pet sprites (paid asset)
+      # 펫 스프라이트(ToffeeCraft, 유료)는 gitignore 로 공개 레포에 없다 → private 에셋 레포에서 복원.
+      # 레포 이름 = vars.PET_ASSETS_REPO, 접근 = 읽기전용 SSH 배포키(secrets.PET_ASSETS_DEPLOY_KEY). <색>/<Anim>.png.
+      - name: Checkout pet sprites (paid asset, private repo)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.PET_ASSETS_REPO }}
+          ssh-key: ${{ secrets.PET_ASSETS_DEPLOY_KEY }}
+          path: .pet-assets
+          persist-credentials: false
+
+      - name: Copy pet sprites into place
         shell: bash
-        env:
-          PET_CREAM: ${{ secrets.PET_SPRITES_CREAM }}
-          PET_GREY: ${{ secrets.PET_SPRITES_GREY }}
-          PET_BLACK: ${{ secrets.PET_SPRITES_BLACK }}
-          PET_GREYWHITE: ${{ secrets.PET_SPRITES_GREYWHITE }}
-          PET_ORANGE: ${{ secrets.PET_SPRITES_ORANGE }}
-          PET_WHITE: ${{ secrets.PET_SPRITES_WHITE }}
         run: |
           set -euo pipefail
-          mkdir -p src/assets/pet
-          inject() {   # $1 색 이름, $2 base64(tar.gz)
-            [ -n "$2" ] || { echo "::error::pet secret for $1 is empty"; exit 1; }
-            printf '%s' "$2" | base64 --decode | tar -xzf - -C src/assets/pet
-          }
-          inject cream     "$PET_CREAM"
-          inject grey      "$PET_GREY"
-          inject black     "$PET_BLACK"
-          inject greywhite "$PET_GREYWHITE"
-          inject orange    "$PET_ORANGE"
-          inject white     "$PET_WHITE"
+          for c in cream grey black greywhite orange white; do
+            mkdir -p "src/assets/pet/$c"
+            cp ".pet-assets/$c/"*.png "src/assets/pet/$c/"
+          done
           missing=0
           for c in cream grey black greywhite orange white; do
             for f in Idle Running Sleeping Surprised; do
