@@ -58,7 +58,6 @@ jobs:
           EOF
 
       # 펫 스프라이트(ToffeeCraft, 유료)는 gitignore 로 공개 레포에 없다 → private 에셋 레포에서 복원.
-      # 레포 이름 = vars.PET_ASSETS_REPO, 접근 = 읽기전용 SSH 배포키(secrets.PET_ASSETS_DEPLOY_KEY). <색>/<Anim>.png.
       - name: Checkout pet sprites (paid asset, private repo)
         uses: actions/checkout@v4
         with:
