@@ -70,6 +70,79 @@
       .pet-dot[hidden] {
         display: none;
       }
+      /* 상호작용 아이템 — 바닥에 붙어 좌우로 이동(공) 또는 정지(밥). 픽셀아트 유지.
+         배경 이미지는 JS 가 지정(경로를 pet 스프라이트와 같은 방식으로 다룬다). */
+      .pet-toy {
+        position: absolute;
+        left: 0;
+        bottom: 2%;
+        height: 16%;
+        aspect-ratio: 1 / 1;
+        background-repeat: no-repeat;
+        background-position: center bottom;
+        background-size: contain;
+        image-rendering: pixelated;
+        will-change: transform;
+      }
+      /* 밥 — 격자 시트에서 한 칸만 보여준다(background-size/position 은 JS 가 지정). */
+      .pet-food {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 24%;
+        aspect-ratio: 1 / 1;
+        background-repeat: no-repeat;
+        image-rendering: pixelated;
+      }
+      /* 낚싯대 깃털 — 커서를 따라다님. 클릭은 통과(클릭은 stage 가 받아 낚싯대를 끝낸다). */
+      .pet-feather {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 30%;
+        aspect-ratio: 1 / 1;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+        image-rendering: pixelated;
+        pointer-events: none;
+        z-index: 6;
+      }
+      .pet-toy[hidden],
+      .pet-food[hidden],
+      .pet-feather[hidden] {
+        display: none;
+      }
+      /* 하트 파티클 레이어(쓰다듬기) — 클릭 통과, 위로 떠오르며 사라진다. */
+      .pet-hearts {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .pet-heart {
+        position: absolute;
+        color: #ff5b8a;
+        font-size: 14px;
+        line-height: 1;
+        opacity: 0;
+        will-change: transform, opacity;
+        animation: pet-heart-float 0.85s ease-out forwards;
+      }
+      @keyframes pet-heart-float {
+        0% {
+          transform: translateY(0) scale(0.6);
+          opacity: 0;
+        }
+        20% {
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(-140%) scale(1);
+          opacity: 0;
+        }
+      }
       /* 우클릭 메뉴 — 레트로 CRT 톤(어두운 배경 + 초록 테두리/글자). 창 밖으로 넘치지 않게
          JS 가 left/top 을 clamp 한다. */
       .pet-menu {

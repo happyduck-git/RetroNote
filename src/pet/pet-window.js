@@ -5,7 +5,29 @@ import { el } from "../core/dom.js";
 import { makePetBehavior } from "./behavior.js";
 import { makePetDisplayController } from "./pet-display.js";
 import { assetBaseFor, normalizeCat } from "./cats.js";
-import { ANIMATIONS, animKeyFor } from "./sprite.js";
+import { ANIMATIONS, AMBIENT_ANIM_KEYS, animKeyFor } from "./sprite.js";
+
+// 장난감/밥 에셋(유료, gitignore). 경로는 문서(pet.html) 기준 상대 — 펫 스프라이트와 동일 방식.
+// 추격 장난감(장난치기에서 랜덤): 공 3색 + 쥐. 쥐는 좀 더 빠르게 움직여 "사냥" 느낌.
+const CHASE_TOYS = [
+  { src: "assets/toys/ball-blue.gif", speed: 0.55 },
+  { src: "assets/toys/ball-orange.gif", speed: 0.55 },
+  { src: "assets/toys/ball-pink.gif", speed: 0.55 },
+  { src: "assets/toys/mouse.gif", speed: 0.85 },
+];
+// 음식(먹이주기에서 랜덤): 사료(1칸) / 생선(2×2 격자) / 밥그릇(2×2 격자).
+// 격자 시트는 background-position 으로 한 칸만 보여준다(색까지 랜덤 → 파일 3개로 9가지).
+const FOODS = [
+  { src: "assets/toys/food-catfood.png", cols: 1, rows: 1 },
+  { src: "assets/toys/food-fish.png", cols: 2, rows: 2 },
+  { src: "assets/toys/food-bowl.png", cols: 2, rows: 2 },
+];
+const FEATHER_SRC = "assets/toys/feather.gif"; // 낚싯대(커서 추적)
+const DRAG_THRESHOLD = 4; // px — 이보다 움직이면 창 드래그, 아니면 클릭(쓰다듬기)
+const PET_ESCALATE_MS = 2500; // 이 시간 안에 다시 쓰다듬으면 강도 누적, 지나면 리셋
+const BALL_FRICTION = 0.3; // 장난감 감속(초당 정규화 속도 감소) → 점점 느려져 고양이가 추월해 잡음
+const TOY_START_GAP = 0.15; // 고양이 앞 이만큼 떨어진 곳에서 출발(즉시 잡힘 방지)
+const randOf = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // Tauri 전역(withGlobalTauri). 브라우저 단독 실행에선 없으므로 옵셔널 접근.
 const T = typeof window !== "undefined" ? window.__TAURI__ : undefined;
@@ -20,19 +42,37 @@ const PET_MAX = { w: 400, h: 360 };
 function buildDom() {
   const dot = el("div", { class: "pet-dot", hidden: true });
   const pet = el("div", { class: "pet" }, [dot]);
-  // 우클릭 메뉴(기본 숨김).
+  // 바닥에 놓이는 상호작용 아이템(기본 숨김): 굴러다니는 공/쥐 · 밥(둘 다 배경이미지 div).
+  const ball = el("div", { class: "pet-toy", hidden: true });
+  const food = el("div", { class: "pet-food", hidden: true });
+  // 낚싯대 깃털(커서를 따라다님, 기본 숨김).
+  const feather = el("div", { class: "pet-feather", hidden: true });
+  // 하트 파티클 레이어(쓰다듬기).
+  const hearts = el("div", { class: "pet-hearts" });
+  // 우클릭 메뉴(기본 숨김). 쓰다듬기는 펫 직접 클릭이라 메뉴엔 없음.
+  const feedBtn = el("button", { class: "pet-menu-item", type: "button", text: "Feed" });
+  const playBtn = el("button", { class: "pet-menu-item", type: "button", text: "Play" });
+  const wandBtn = el("button", { class: "pet-menu-item", type: "button", text: "Wand" });
+  const boxBtn = el("button", { class: "pet-menu-item", type: "button", text: "Box" });
   const removeBtn = el("button", { class: "pet-menu-item", type: "button", text: "Remove pet" });
-  const menu = el("div", { class: "pet-menu", hidden: true }, [removeBtn]);
+  const menu = el("div", { class: "pet-menu", hidden: true }, [feedBtn, playBtn, wandBtn, boxBtn, removeBtn]);
   // 투명 창을 드래그로 리사이즈하는 손잡이(우하단 코너).
   const grip = el("div", { class: "pet-resize", title: "Drag to resize" });
-  const stage = el("div", { class: "pet-stage" }, [pet, menu, grip]);
+  const stage = el("div", { class: "pet-stage" }, [pet, ball, food, feather, hearts, menu, grip]);
   document.body.append(stage);
-  return { stage, pet, dot, menu, removeBtn, grip };
+  return { stage, pet, dot, ball, food, feather, hearts, menu, feedBtn, playBtn, wandBtn, boxBtn, removeBtn, grip };
 }
 
 export function initPetWindow() {
-  const { stage, pet, dot, menu, removeBtn, grip } = buildDom();
+  const { stage, pet, dot, ball, food, feather, hearts, menu, feedBtn, playBtn, wandBtn, boxBtn, removeBtn, grip } =
+    buildDom();
   const behavior = makePetBehavior({});
+
+  // 깃털 배경 지정 + 장난감/음식/깃털 GIF·PNG 캐시 예열(숨김 요소 배경이라 로드가 지연될 수 있음).
+  feather.style.backgroundImage = `url(${FEATHER_SRC})`;
+  [...CHASE_TOYS.map((t) => t.src), ...FOODS.map((f) => f.src), FEATHER_SRC].forEach((src) => {
+    new Image().src = src;
+  });
 
   // 브리지로 받는 상태(빨간 점 게이팅).
   let unread = 0;
@@ -72,6 +112,161 @@ export function initPetWindow() {
     dot.hidden = !(unread > 0 && !mainFocused);
   }
 
+  // --- 상호작용 아이템/모드 — 한 번에 하나만 ---
+  let ballActive = false;
+  let ballX = 0; // 정규화 위치(0~1)
+  let ballVx = 0; // 정규화 속도(초당)
+  let ballSpeed = 0; // 이번 장난감 속도(공/쥐 다름)
+  let foodActive = false;
+  let wandActive = false;
+  let boxActive = false;
+
+  // 커서(낚싯대·하트 위치용). stage 는 창 전체(0,0)라 clientX/Y 를 그대로 쓴다.
+  let cursorX = 0; // clientX
+  let cursorY = 0; // clientY
+  let cursorNX = 0.5; // 펫 좌표계로 환산한 정규화 x
+
+  const itemBusy = () => ballActive || foodActive || wandActive || boxActive;
+
+  // 아이템을 창 폭에 맞춰 바닥의 nx(0~1) 위치에 놓는다(스프라이트 폭만큼 범위 축소).
+  function placeItem(elm, nx) {
+    const range = Math.max(0, stage.clientWidth - elm.offsetWidth);
+    elm.style.transform = `translateX(${nx * range}px)`;
+  }
+  // 추격 장난감은 진행 방향으로 좌우 반전(공은 대칭이라 무해, 쥐는 바라보는 방향).
+  function placeToy(nx, vx) {
+    const range = Math.max(0, stage.clientWidth - ball.offsetWidth);
+    ball.style.transform = `translateX(${nx * range}px) scaleX(${vx < 0 ? -1 : 1})`;
+  }
+
+  // 장난치기: 공(3색)/쥐 중 랜덤. 고양이 근처에서 빈 쪽으로 굴러 나가고, 마찰로 점점 느려진다
+  // → 고양이가 뒤에서 따라잡아 도약(Jump)으로 덮침.
+  function spawnToy() {
+    if (!assetBase || itemBusy()) return;
+    const toy = randOf(CHASE_TOYS);
+    ball.style.backgroundImage = `url(${toy.src})`;
+    ballSpeed = toy.speed;
+    const petX = behavior.getState().x;
+    const dir = petX < 0.5 ? 1 : -1; // 여유 있는(먼) 쪽으로 굴려보냄
+    ballX = Math.max(0, Math.min(1, petX + dir * TOY_START_GAP));
+    ballVx = dir * ballSpeed;
+    ballActive = true;
+    ball.hidden = false;
+    placeToy(ballX, ballVx);
+    behavior.play(ballX);
+  }
+  function clearBall() {
+    ballActive = false;
+    ball.hidden = true;
+  }
+
+  // 먹이주기: 사료/생선/밥그릇 중 랜덤 + 격자 시트면 한 칸(색)도 랜덤.
+  function spawnFood() {
+    if (!assetBase || itemBusy()) return;
+    const f = randOf(FOODS);
+    const cx = Math.floor(Math.random() * f.cols);
+    const cy = Math.floor(Math.random() * f.rows);
+    food.style.backgroundImage = `url(${f.src})`;
+    food.style.backgroundSize = `${f.cols * 100}% ${f.rows * 100}%`;
+    food.style.backgroundPositionX = f.cols > 1 ? `${(cx / (f.cols - 1)) * 100}%` : "0%";
+    food.style.backgroundPositionY = f.rows > 1 ? `${(cy / (f.rows - 1)) * 100}%` : "0%";
+    const nx = Math.random(); // 바닥 임의 위치
+    foodActive = true;
+    food.hidden = false;
+    placeItem(food, nx);
+    behavior.feed(nx);
+  }
+  function clearFood() {
+    foodActive = false;
+    food.hidden = true;
+  }
+
+  // 상자: 고양이가 상자에 쏙 들어가 논다(별도 DOM 없음, 상자는 스프라이트에 그려져 있음).
+  function tryBox() {
+    if (!assetBase || itemBusy()) return;
+    boxActive = true;
+    behavior.box();
+  }
+
+  // --- 낚싯대(깃털이 커서를 따라다니고 펫이 끝없이 쫓아 툭 침) ---
+  function positionFeather() {
+    feather.style.transform = `translate(${cursorX - feather.offsetWidth / 2}px, ${
+      cursorY - feather.offsetHeight / 2
+    }px)`;
+  }
+  function startWand() {
+    if (!assetBase || itemBusy()) return;
+    wandActive = true;
+    feather.hidden = false;
+    wandBtn.textContent = "Stop wand";
+    positionFeather();
+    behavior.swat(cursorNX); // 첫 추격 시작
+  }
+  function endWand() {
+    if (!wandActive) return;
+    wandActive = false;
+    feather.hidden = true;
+    wandBtn.textContent = "Wand";
+    // 진행 중이던 추격은 자연히 끝나 idle 로 복귀(강제 전이 없음).
+  }
+
+  // 매 프레임 아이템 갱신. 공/쥐는 굴러가며 벽에서 튕기고 펫이 추적. 낚싯대는 끝나면 다시 추격.
+  function updateItems(dt, state) {
+    if (ballActive) {
+      if (state !== "approach") {
+        clearBall(); // 도약(leap)·타임아웃 등으로 approach 를 벗어남 → 장난감 사라짐
+      } else {
+        // 마찰로 감속(선형). 아주 느려지면 멈춰(0) 고양이가 다가와 덮치게 둔다.
+        const sp = Math.max(0, Math.abs(ballVx) - BALL_FRICTION * (dt / 1000));
+        ballVx = ballVx < 0 ? -sp : sp;
+        ballX += ballVx * (dt / 1000);
+        if (ballX <= 0) {
+          ballX = 0;
+          ballVx = Math.abs(ballVx);
+        } else if (ballX >= 1) {
+          ballX = 1;
+          ballVx = -Math.abs(ballVx);
+        }
+        behavior.setTarget(ballX);
+        placeToy(ballX, ballVx);
+      }
+    }
+    if (foodActive && state !== "approach" && state !== "eat") {
+      clearFood(); // 다 먹음(eat 종료) → 밥 사라짐
+    }
+    if (boxActive && state !== "boxed") boxActive = false; // 상자에서 나옴 → 배타 해제
+    // 낚싯대 재추격은 루프 상단(렌더 전)에서 처리한다 — idle 프레임 깜빡임 방지.
+  }
+
+  // --- 쓰다듬기 심화(연속으로 만질수록 반응↑) ---
+  let petCount = 0;
+  let petResetId = null;
+  function petStroke() {
+    if (!assetBase) return;
+    petCount++;
+    if (petResetId != null) clearTimeout(petResetId);
+    petResetId = setTimeout(() => {
+      petCount = 0;
+      petResetId = null;
+    }, PET_ESCALATE_MS);
+    const tier = petCount >= 5 ? 3 : petCount >= 3 ? 2 : 1; // Tickle → Happy → Excited
+    behavior.stroke(tier);
+    spawnHearts(tier);
+  }
+  function spawnHearts(tier = 1) {
+    const n = tier >= 3 ? 6 + Math.floor(Math.random() * 3) : tier >= 2 ? 4 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 2);
+    const petLeft = pet.getBoundingClientRect().left;
+    for (let i = 0; i < n; i++) {
+      const h = el("div", { class: "pet-heart", text: "♥" });
+      h.style.left = `${petLeft + pet.offsetWidth * (0.2 + Math.random() * 0.6)}px`;
+      h.style.bottom = `${pet.offsetHeight * (0.5 + Math.random() * 0.2)}px`;
+      h.style.animationDelay = `${i * 70}ms`;
+      if (tier >= 3) h.style.fontSize = "18px"; // 강할수록 큰 하트
+      h.addEventListener("animationend", () => h.remove());
+      hearts.append(h);
+    }
+  }
+
   // --- rAF 루프 (시간 기반 dt) ---
   let rafId = null;
   let last = null;
@@ -88,6 +283,15 @@ export function initPetWindow() {
     if (dt > 100) dt = 100; // 오래 숨었다 복귀 시 순간이동 방지
 
     behavior.tick(dt);
+
+    // 낚싯대: swat 이 끝나 idle 로 돌아오는 순간, 렌더(setAnim) 전에 즉시 다시 추격을 건다.
+    // → 덮치기(pounce) 사이에 idle 프레임이 한 컷 새어 나오는 깜빡임 방지.
+    if (wandActive) {
+      const s = behavior.getState().state;
+      if (s === "approach") behavior.setTarget(cursorNX);
+      else if (s !== "pounce") behavior.swat(cursorNX);
+    }
+
     const { state, x, facing } = behavior.getState();
 
     setAnim(animKeyFor(state));
@@ -105,6 +309,9 @@ export function initPetWindow() {
     const range = Math.max(0, stage.clientWidth - pet.offsetWidth);
     const px = x * range;
     pet.style.transform = `translateX(${px}px) scaleX(${facing === "left" ? -1 : 1})`;
+
+    // 상호작용 아이템(공/밥) 위치·정리.
+    updateItems(dt, state);
   }
 
   function start() {
@@ -126,6 +333,15 @@ export function initPetWindow() {
     else start();
   });
 
+  // 커서 추적(낚싯대 조준 + 하트 위치). stage=창 전체(0,0)라 clientX/Y 를 그대로 쓴다.
+  window.addEventListener("mousemove", (e) => {
+    cursorX = e.clientX;
+    cursorY = e.clientY;
+    const range = Math.max(1, stage.clientWidth - pet.offsetWidth);
+    cursorNX = Math.max(0, Math.min(1, (e.clientX - pet.offsetWidth / 2) / range));
+    if (wandActive) positionFeather();
+  });
+
   // 스트립 선로드 프로브. background-image 는 onerror 가 없어 이렇게 별도로 존재를 확인한다.
   const preloadImage = (src) =>
     new Promise((resolve, reject) => {
@@ -135,23 +351,44 @@ export function initPetWindow() {
       img.src = src;
       if (img.complete && img.naturalWidth > 0) resolve(); // 캐시 즉시완료 폴백
     });
-  // idle 하나만이 아니라 실제 재생할 스트립 전부를 확인해야 walk/sleep/react 중 투명 창이 안 뜬다.
-  const ANIM_IMGS = [...new Set(Object.values(ANIMATIONS).map((a) => a.img))];
+  // idle 하나만이 아니라 일상 스트립(walk/sleep/react)까지 확인해야 그 상태에서 투명 창이 안 뜬다.
+  const AMBIENT_IMGS = [...new Set(AMBIENT_ANIM_KEYS.map((k) => ANIMATIONS[k].img))];
+  // 상호작용 스트립(petting/eat/pounce/excited) — 표시 게이팅에서 제외하고 창을 띄운 뒤 캐시만 예열.
+  const INTERACTION_IMGS = [
+    ...new Set(
+      Object.entries(ANIMATIONS)
+        .filter(([k]) => !AMBIENT_ANIM_KEYS.includes(k))
+        .map(([, a]) => a.img),
+    ),
+  ];
 
   let winVisible = false;
 
-  // 표시 컨트롤러(순수 로직) 배선. loadImage 는 4개 스트립을 모두 선로드(하나라도 없으면 reject → show 안 함).
+  // 표시 컨트롤러(순수 로직) 배선. loadImage 는 일상 스트립을 모두 선로드(하나라도 없으면 reject → show 안 함).
   const controller = makePetDisplayController({
-    loadImage: (base) => Promise.all(ANIM_IMGS.map((name) => preloadImage(base + name))),
+    loadImage: (base) => Promise.all(AMBIENT_IMGS.map((name) => preloadImage(base + name))),
     show: () => {
       if (!winVisible) {
         winVisible = true;
         getCurrentWindow?.().show?.().catch((err) => console.error("pet show failed:", err));
       }
+      // 상호작용 스트립 캐시 예열(실패 무시) → 첫 상호작용 시 한 프레임 깜빡임 방지.
+      if (assetBase) INTERACTION_IMGS.forEach((name) => preloadImage(assetBase + name).catch(() => {}));
       start();
     },
     hide: () => {
       stop();
+      clearBall(); // 떠 있던 상호작용 아이템 정리(제거/색변경 시 잔상 방지)
+      clearFood();
+      endWand();
+      boxActive = false;
+      behavior.reset(); // 진행 중이던 상호작용 상태를 idle 로 → 재표시 시 잔여 동작 방지
+      if (petResetId != null) {
+        clearTimeout(petResetId);
+        petResetId = null;
+      }
+      petCount = 0; // 쓰다듬기 강도 누적이 다음 표시로 새지 않게
+      hearts.replaceChildren(); // 애니 중이던 하트 잔여 제거
       assetBase = null; // 재표시 시 render 로 다시 확정
       if (winVisible) {
         winVisible = false;
@@ -163,6 +400,10 @@ export function initPetWindow() {
       setAnim(animKeyFor(behavior.getState().state));
     },
   });
+
+  // 진행 중 제스처(드래그/리사이즈/낚싯대 클릭)의 임시 window 리스너 정리자.
+  // mouseup 을 놓쳐도(누른 채 포커스 상실) blur 에서 정리해, hover 만으로 창이 끌려가는 누수를 막는다.
+  let cancelGesture = null;
 
   // --- 우클릭 메뉴 ---
   let menuOpen = false;
@@ -193,19 +434,58 @@ export function initPetWindow() {
     }
   }
 
-  // 좌클릭 드래그로 창 이동. 메뉴가 떠 있으면 드래그 대신 메뉴 처리.
-  stage.addEventListener("mousedown", async (e) => {
+  // 좌클릭: 안 움직이면 클릭(쓰다듬기), 임계값 이상 움직이면 창 드래그.
+  // startDragging 은 OS 가 드래그를 가로채므로, 실제 이동이 감지된 뒤에야 호출한다.
+  stage.addEventListener("mousedown", (e) => {
     if (menuOpen) {
       // 메뉴 밖을 누르면 닫기만(드래그 안 함). 메뉴 안(버튼)은 button click 이 처리.
       if (!menu.contains(e.target)) closeMenu();
       return;
     }
     if (e.button !== 0) return;
-    try {
-      await getCurrentWindow?.().startDragging?.();
-    } catch (err) {
-      console.error("pet startDragging failed:", err);
+    if (e.target === grip) return; // 리사이즈는 grip 핸들러가 담당
+
+    if (wandActive) {
+      // 낚싯대 노는 중: 클릭 한 번으로 그만두기(드래그·쓰다듬기 없음).
+      const cleanup = () => {
+        window.removeEventListener("mouseup", onWandUp);
+        cancelGesture = null;
+      };
+      const onWandUp = () => {
+        cleanup();
+        endWand();
+      };
+      window.addEventListener("mouseup", onWandUp);
+      cancelGesture = cleanup;
+      return;
     }
+
+    const sx = e.screenX;
+    const sy = e.screenY;
+    let dragging = false;
+
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      cancelGesture = null;
+    };
+    const onMove = (ev) => {
+      if (dragging) return;
+      if (Math.abs(ev.screenX - sx) > DRAG_THRESHOLD || Math.abs(ev.screenY - sy) > DRAG_THRESHOLD) {
+        dragging = true;
+        cleanup();
+        getCurrentWindow?.()
+          .startDragging?.()
+          .catch((err) => console.error("pet startDragging failed:", err));
+      }
+    };
+    const onUp = () => {
+      cleanup();
+      if (!dragging) petStroke(); // 안 움직였으면 클릭 = 쓰다듬기
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    cancelGesture = cleanup;
   });
 
   // 리사이즈 그립 — window-controls.js 와 같은 수동 방식(현재 크기 + 화면좌표 델타 → setSize, rAF 스로틀).
@@ -248,9 +528,11 @@ export function initPetWindow() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (rafId != null) cancelAnimationFrame(rafId);
+      cancelGesture = null;
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    cancelGesture = onUp;
   });
 
   // 우클릭 → 기본 메뉴 막고 커스텀 메뉴 표시.
@@ -259,13 +541,36 @@ export function initPetWindow() {
     openMenu(e.clientX, e.clientY);
   });
 
+  feedBtn.addEventListener("click", () => {
+    closeMenu();
+    spawnFood();
+  });
+  playBtn.addEventListener("click", () => {
+    closeMenu();
+    spawnToy();
+  });
+  wandBtn.addEventListener("click", () => {
+    closeMenu();
+    if (wandActive) endWand();
+    else startWand();
+  });
+  boxBtn.addEventListener("click", () => {
+    closeMenu();
+    tryBox();
+  });
   removeBtn.addEventListener("click", removePet);
 
-  // 메뉴 닫기: Esc / 창 포커스 잃음.
+  // 메뉴 닫기 / 낚싯대 끝내기: Esc.
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeMenu();
+    if (e.key === "Escape") {
+      closeMenu();
+      endWand();
+    }
   });
-  window.addEventListener("blur", closeMenu);
+  window.addEventListener("blur", () => {
+    closeMenu();
+    if (cancelGesture) cancelGesture();
+  });
 
   // --- 브리지 이벤트 수신 + 부팅 핸드셰이크 ---
   // 리스너 등록을 기다린 뒤 pet:ready emit → 메인의 첫 pet:set-cat 을 놓치지 않는다.
