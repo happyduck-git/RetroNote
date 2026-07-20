@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 #
-# 릴리스 노트 생성 + 정리(작성자·PR 번호·이슈 번호 제거)를 한 곳에서 처리한다.
+# 릴리스 노트 본문을 한 곳에서 결정한다.
 # CI(release.yml)와 로컬 배포 전 미리보기가 이 스크립트를 공유하므로,
 # 로컬에서 본 결과 = 실제 발행되는 노트(릴리스 본문 + latest.json 의 notes)가 보장된다.
+#
+# 본문은 두 갈래로 정해진다:
+#   1. release-notes/<tag>.md 가 있으면 그 내용을 그대로 쓴다(손으로 쓴 사용자용 문구).
+#   2. 없으면 PR 제목 기반으로 자동 생성하고 작성자·PR 번호·이슈 번호를 걷어낸다.
+#
+# CI 는 태그가 가리키는 커밋을 체크아웃하므로, 손으로 쓴 노트는 태그를 밀기 전에
+# 커밋돼 있어야 한다(버전 범프 PR 에 같이 넣으면 문구까지 한 번에 리뷰된다).
 #
 # 사용법:
 #   scripts/format-release-notes.sh <tag> [target_commitish]
@@ -13,6 +20,9 @@
 #   - CI(태그가 이미 push 되어 존재): target_commitish 생략.
 #       scripts/format-release-notes.sh v0.1.12
 #
+#   손으로 쓴 노트의 초안을 자동 생성으로 깔아두려면:
+#       scripts/draft-release-notes.sh v0.1.12 main
+#
 # 필요 조건: gh(CLI) 로그인 상태. gh 가 PATH 에 없으면 GH 로 경로 지정:
 #   GH="/c/Program Files/GitHub CLI/gh.exe" scripts/format-release-notes.sh v0.1.12 main
 #
@@ -21,6 +31,26 @@ set -euo pipefail
 tag="${1:?사용법: format-release-notes.sh <tag> [target_commitish]  (예: v0.1.12 main)}"
 target="${2:-}"
 gh_bin="${GH:-gh}"
+
+# 호출 위치(레포 루트 / CI / 다른 디렉터리)와 무관하게 노트 파일을 찾도록
+# 스크립트 위치 기준으로 레포 루트를 잡는다.
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+notes_file="${repo_root}/release-notes/${tag}.md"
+
+# 1) 손으로 쓴 노트가 있으면 가공 없이 그대로 내보낸다.
+#    자동 생성본과 달리 이미 사용자용 문구이므로 필터를 태우지 않는다(끝 공백만 정리).
+if [ -f "$notes_file" ]; then
+  hand=$(perl -0777 -pe 's/\s+\z/\n/' "$notes_file")
+  if [ -n "$(printf '%s' "$hand" | tr -d '[:space:]')" ]; then
+    printf '%s\n' "$hand"
+    exit 0
+  fi
+  # 파일은 있는데 내용이 비었으면 실수로 보고 자동 생성으로 폴백한다
+  # (릴리스를 실패시키는 대신 경고만 남긴다).
+  echo "경고: ${notes_file} 가 비어 있어 자동 생성으로 대체합니다." >&2
+fi
+
+# 2) 손으로 쓴 노트가 없으면 기존 자동 생성 경로.
 # CI 는 REPO(=owner/repo)를 넘겨 gh 자동 감지에 의존하지 않는다.
 # 로컬은 {owner}/{repo} 플레이스홀더 → gh 가 현재 git 리모트에서 채운다.
 # (:- 기본값 안에 중괄호를 직접 넣으면 파라미터 확장이 조기 종료되므로 분리해서 설정한다.)
