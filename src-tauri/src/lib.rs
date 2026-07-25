@@ -35,6 +35,7 @@ pub fn run() {
             }
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![reveal_main_window])
         .on_window_event(|window, event| {
             use tauri::Manager;
             if window.label() == "main" {
@@ -57,6 +58,12 @@ pub fn run() {
             reveal_main(_app_handle);
         }
     });
+}
+
+// 프런트에서 reveal_main 을 부르는 통로(#92). Reopen/single-instance 복원과 같은 경로.
+#[tauri::command]
+fn reveal_main_window(app: tauri::AppHandle) {
+    reveal_main(&app);
 }
 
 fn reveal_main(app: &tauri::AppHandle) {
