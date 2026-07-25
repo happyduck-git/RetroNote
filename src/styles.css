@@ -673,6 +673,68 @@ body {
   border-top: 1px solid rgba(0, 255, 65, 0.3);
 }
 
+/* 슬래시 명령 안내 배너. display 를 지정하지 않아 [hidden] 이면 UA 기본값으로 숨는다. */
+.room-command-banner {
+  flex: 0 0 auto;
+  margin: 0.2em 0;
+  padding: 0.25em 0.5em;
+  font-size: calc(var(--computer-width) / 46);
+  line-height: 1.4;
+  white-space: pre-line; /* /help 여러 줄 목록을 줄바꿈 그대로 표시 */
+  opacity: 0.85;
+  border-left: 0.15em solid currentColor;
+}
+
+/* 슬래시 명령 자동완성 팝업: 입력행 위로 떠서 후보를 보여준다(emoji picker 와 같은 앵커). */
+.room-command-suggest {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 0.25em;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 20, 5, 0.92);
+  border: 1px solid rgba(0, 255, 65, 0.35);
+  max-height: 40vh;
+  overflow-y: auto;
+  z-index: 5;
+}
+
+.room-command-suggest-item {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  padding: 0.2em 0.5em;
+  text-align: left;
+  font: inherit;
+  font-size: calc(var(--computer-width) / 44);
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.room-command-suggest-item:hover {
+  background: rgba(0, 255, 65, 0.08);
+}
+
+/* 하이라이트: pet 설정의 선택 셀(.pet-picker-item.active)과 같은 톤. */
+.room-command-suggest-item.active {
+  color: #fff;
+  text-shadow: 0 0 8px #fff;
+  background: rgba(0, 255, 65, 0.12);
+}
+
+.room-command-suggest-name {
+  flex: 0 0 auto;
+}
+
+.room-command-suggest-desc {
+  flex: 1 1 auto;
+  opacity: 0.7;
+}
+
 .room-input-row {
   display: flex;
   gap: 0.3em;

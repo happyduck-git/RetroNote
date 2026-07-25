@@ -9,9 +9,12 @@ import { messageNotifier } from "../chat/message-notifier.js";
 import { withDateDividers } from "../chat/date-divider.js";
 import { uploadAttachment } from "../chat/attachment.js";
 import { isGiphyConfigured } from "../chat/giphy.js";
+import { makeSlashDispatcher } from "../chat/slash-command.js";
 import { buildHeader, STATUS_TEXT } from "./room/header.js";
 import { buildNickEditor } from "./room/nick-editor.js";
 import { buildInputRow } from "./room/input-row.js";
+import { buildCommandBanner } from "./room/command-banner.js";
+import { buildCommandSuggest } from "./room/command-suggest.js";
 import { buildAttachPreview, buildAttachMenu } from "./room/attach.js";
 import { buildGifPicker } from "./room/gif-picker.js";
 import { buildLightbox } from "./room/lightbox.js";
@@ -94,9 +97,19 @@ export const roomView = {
     const historyHint = el("div", { class: "room-history-hint", hidden: true });
     const showGif = isGiphyConfigured();
     const { inputRowEl, emojiBtn, mediaBtn, fileInput, input, sendBtn } = buildInputRow({ showGif });
+    const commandBanner = buildCommandBanner();
+    const dispatchCommand = makeSlashDispatcher({ navigate: ctx.navigate, showBanner: commandBanner.show });
+    // 목록에서 고른 명령을 실행하고 입력창을 정리한다. dispatchCommand 는 알려진 이름이면 실행한다.
+    function runCommand(text) {
+      dispatchCommand(text);
+      input.value = "";
+      commandSuggest.hide();
+      input.focus();
+    }
+    const commandSuggest = buildCommandSuggest({ onRun: (name) => runCommand(`/${name}`) });
     // emoji picker 팝업은 input row 의 자식으로 append — input row 의 position: relative 가 앵커.
     const picker = buildEmojiPicker(input);
-    inputRowEl.append(picker.popupEl);
+    inputRowEl.append(picker.popupEl, commandSuggest.listEl);
     emojiBtn.addEventListener("click", () => {
       if (emojiBtn.disabled) return;
       picker.toggle();
@@ -161,7 +174,7 @@ export const roomView = {
 
     // lightbox 는 .room 의 마지막 자식으로 → position: absolute + inset: 0 으로 자연스럽게 채움.
     const lightbox = buildLightbox();
-    screenEl.append(el("div", { class: "room" }, [headerEl, historyHint, list, attachPreview.el, inputRowEl, lightbox.el]));
+    screenEl.append(el("div", { class: "room" }, [headerEl, historyHint, list, attachPreview.el, commandBanner.bannerEl, inputRowEl, lightbox.el]));
 
     // 메시지 리스트의 이미지 클릭을 위임 처리 — 메시지마다 핸들러를 달지 않는다.
     // broken 폴백(span)이나 다른 영역 클릭은 .msg-image 매칭이 안 돼 자연스럽게 무시.
@@ -337,10 +350,16 @@ export const roomView = {
     // --- 송신: DB INSERT 하나로 보내고, postgres_changes echo가 자기 자신에게도 돌아옴.
     // 즉시 응답을 위해 낙관적 add도 함께 한다(중복은 store의 id dedup이 처리).
     async function doSend() {
+      const text = input.value.trim();
+      // 슬래시 명령은 로컬 동작이라 연결 상태와 무관 → sendBtn 게이트보다 앞에서 가로챈다.
+      if (dispatchCommand(text)) {
+        input.value = "";
+        commandSuggest.hide();
+        return;
+      }
       // disconnect 중에도 input 은 enabled 라 Enter 키가 그대로 들어옴 — sendBtn 게이트와
       // 동일하게 막아 transport.send 가 실패→failed 메시지로 박히는 것을 방지.
       if (sendBtn.disabled) return;
-      const text = input.value.trim();
       // text 와 첨부 중 적어도 하나는 있어야 한다 — DB check constraint 와 동일 정책.
       if (!text && !pendingAttachment) return;
       // send 시점에 라이브로 다시 읽는다 — [✎]로 닉네임을 바꾼 직후 보낸 메시지는
@@ -379,12 +398,42 @@ export const roomView = {
       }
     }
     sendBtn.addEventListener("click", doSend);
+    input.addEventListener("input", () => commandSuggest.update(input.value));
     input.addEventListener("keydown", (e) => {
       playKey(); // 레트로 일관성: 채팅 입력도 키사운드 재생
-      // IME composition 중 Enter 는 commit 키 → 무시. Chromium webview(WebView2/Chrome)에서
-      // 한글 마지막 글자가 두 번 전송되는 버그 방지. WebKit(Safari/macOS WKWebView)에서는
-      // 어차피 composing 중 keydown 이 안 와 변화 없음.
-      if (e.key === "Enter" && !e.isComposing) {
+      // IME composition 중 키는 조합용(commit 포함) → 무시. Chromium webview 에서 한글 마지막
+      // 글자가 두 번 전송되는 버그 방지. WebKit 에선 어차피 composing 중 keydown 이 안 온다.
+      if (e.isComposing) return;
+      // 자동완성 목록이 떠 있으면 방향키/Enter/Tab/Esc 를 목록 조작으로 가로챈다.
+      if (commandSuggest.isOpen()) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          commandSuggest.move(1);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          commandSuggest.move(-1);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          commandSuggest.hide();
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          input.value = `/${commandSuggest.current()} `;
+          commandSuggest.hide();
+          return;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          runCommand(`/${commandSuggest.current()}`);
+          return;
+        }
+      }
+      if (e.key === "Enter") {
         e.preventDefault();
         doSend();
       }
@@ -416,6 +465,7 @@ export const roomView = {
       window.removeEventListener("resize", restoreScroll);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onWinFocus);
+      commandBanner.hide(); // 배너 자동 숨김 타이머 정리(누수 방지)
       // 펫: 방을 나가면 "지금 보는 방" 해제.
       messageNotifier.setActiveRoom(null);
     };
