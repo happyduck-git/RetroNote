@@ -32,6 +32,20 @@ export function buildCommandSuggest({ onRun }) {
     );
   }
 
+  // 목록·입력창·SEND 바깥을 누르면 닫는다. 항목 클릭은 항목 자체 mousedown 이 처리하므로 통과시키고,
+  // 입력창/SEND 는 각자 로직(타이핑·commitInput)이 목록을 확정하므로 여기서 닫지 않는다.
+  function onDocMouseDown(e) {
+    if (listEl.contains(e.target)) return;
+    if (e.target.closest?.(".room-input, .room-send")) return;
+    hide();
+  }
+
+  function show() {
+    if (!listEl.hidden) return; // 이미 열려 있으면 document 리스너 중복 등록 방지
+    listEl.hidden = false;
+    document.addEventListener("mousedown", onDocMouseDown, true);
+  }
+
   // 입력값에 맞춰 목록 갱신. 표시할 게 없으면 숨김.
   function update(text) {
     const q = suggestQuery(text);
@@ -39,7 +53,7 @@ export function buildCommandSuggest({ onRun }) {
     items = matchCommands(q);
     if (items.length === 0) return hide();
     active = 0;
-    listEl.hidden = false;
+    show();
     render();
   }
 
@@ -62,6 +76,7 @@ export function buildCommandSuggest({ onRun }) {
     items = [];
     active = 0;
     listEl.replaceChildren();
+    document.removeEventListener("mousedown", onDocMouseDown, true);
   }
 
   return { listEl, update, move, current, isOpen, hide };

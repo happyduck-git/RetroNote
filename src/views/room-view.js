@@ -112,6 +112,7 @@ export const roomView = {
     inputRowEl.append(picker.popupEl, commandSuggest.listEl);
     emojiBtn.addEventListener("click", () => {
       if (emojiBtn.disabled) return;
+      commandSuggest.hide(); // 자동완성 목록과 겹치지 않게: 이모지를 열 땐 목록을 닫는다.
       picker.toggle();
     });
 
@@ -397,14 +398,25 @@ export const roomView = {
         }
       }
     }
-    sendBtn.addEventListener("click", doSend);
-    input.addEventListener("input", () => commandSuggest.update(input.value));
+    // Enter · SEND 공통 확정: 자동완성이 떠 있으면 하이라이트한 명령을 실행, 아니면 일반 전송.
+    function commitInput() {
+      if (commandSuggest.isOpen()) {
+        runCommand(`/${commandSuggest.current()}`);
+        return;
+      }
+      doSend();
+    }
+    sendBtn.addEventListener("click", commitInput);
+    input.addEventListener("input", () => {
+      commandSuggest.update(input.value);
+      if (commandSuggest.isOpen()) picker.hide(); // 목록이 뜨면 이모지 팝업을 닫아 상호 배타 유지.
+    });
     input.addEventListener("keydown", (e) => {
       playKey(); // 레트로 일관성: 채팅 입력도 키사운드 재생
       // IME composition 중 키는 조합용(commit 포함) → 무시. Chromium webview 에서 한글 마지막
       // 글자가 두 번 전송되는 버그 방지. WebKit 에선 어차피 composing 중 keydown 이 안 온다.
       if (e.isComposing) return;
-      // 자동완성 목록이 떠 있으면 방향키/Enter/Tab/Esc 를 목록 조작으로 가로챈다.
+      // 자동완성 목록이 떠 있으면 방향키/Tab/Esc 를 목록 조작으로 가로챈다(Enter 는 아래 commitInput 이 확정).
       if (commandSuggest.isOpen()) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -427,15 +439,11 @@ export const roomView = {
           commandSuggest.hide();
           return;
         }
-        if (e.key === "Enter") {
-          e.preventDefault();
-          runCommand(`/${commandSuggest.current()}`);
-          return;
-        }
       }
+      // Enter 확정: 자동완성이 열려 있으면 commitInput 이 하이라이트 명령을 실행, 아니면 일반 전송.
       if (e.key === "Enter") {
         e.preventDefault();
-        doSend();
+        commitInput();
       }
     });
 
@@ -453,6 +461,7 @@ export const roomView = {
 
     this._cleanup = () => {
       picker.cleanup();
+      commandSuggest.hide(); // 자동완성 document mousedown 리스너 정리(누수 방지)
       if (attachMenu) attachMenu.cleanup();
       if (gifPicker) gifPicker.cleanup();
       lightbox.cleanup();

@@ -701,6 +701,11 @@ body {
   z-index: 5;
 }
 
+/* display:flex 가 [hidden] 기본 규칙을 덮으므로 명시적으로 숨김(emoji/attach 팝업과 동일). */
+.room-command-suggest[hidden] {
+  display: none;
+}
+
 .room-command-suggest-item {
   display: flex;
   gap: 0.6em;
