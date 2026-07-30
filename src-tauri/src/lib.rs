@@ -1,6 +1,16 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(all(desktop, not(target_os = "macos")))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            reveal_main(app);
+        }));
+    }
+
+    let app = builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         // 자동 업데이트: GitHub Releases 의 latest.json 을 폴링해 새 버전 감지.
@@ -25,6 +35,42 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|window, event| {
+            use tauri::Manager;
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    if pet_is_visible(window.app_handle()) {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    } else {
+                        window.app_handle().exit(0);
+                    }
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, _event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = _event {
+            reveal_main(_app_handle);
+        }
+    });
+}
+
+fn reveal_main(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
+fn pet_is_visible(app: &tauri::AppHandle) -> bool {
+    use tauri::Manager;
+    app.get_webview_window("pet")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false)
 }
