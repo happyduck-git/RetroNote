@@ -481,7 +481,15 @@ export function initPetWindow() {
     };
     const onUp = () => {
       cleanup();
-      if (!dragging) petStroke(); // 안 움직였으면 클릭 = 쓰다듬기
+      if (dragging) return;
+      // 빨간 점(안 읽음) 떠 있을 때만 클릭 → 메인 창 앞으로(#92). 아니면 쓰다듬기.
+      if (unread > 0 && !mainFocused) {
+        T?.core?.invoke?.("reveal_main_window")?.catch((err) =>
+          console.error("reveal_main_window invoke failed:", err),
+        );
+      } else {
+        petStroke();
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
