@@ -38,15 +38,15 @@
         transform-origin: center bottom;
         will-change: transform;
       }
-      /* 안 읽음 빨간 점 — 펫 위에 얹힘(동그란 점, badge.js 와 같은 빨강). 통통 튀어 눈에 띈다. */
+      /* 안 읽음 배지 — 펫 위에 얹힌 발바닥(CatUI.png 에서 자른 badge-paw.png). 통통 튀어 눈에 띈다. */
       .pet-dot {
         position: absolute;
         top: 4%;
         left: 44%;
         width: 13%;
-        aspect-ratio: 1 / 1;
-        background: #e23b3b;
-        border-radius: 50%;
+        aspect-ratio: 35 / 30;
+        background: url("assets/pet/badge-paw.png") no-repeat center / contain;
+        image-rendering: pixelated;
         transform-origin: center bottom;
         animation: pet-dot-bounce 0.9s ease-in-out infinite;
       }
