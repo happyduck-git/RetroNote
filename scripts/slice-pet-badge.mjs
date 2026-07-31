@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 
 // 원본 CatUI.png 치수와 발바닥 1번 절대 좌표(좌상단 포함, 우하단 배제).
@@ -35,13 +36,18 @@ function isBlank(png) {
 }
 
 const SRC = parseSrc();
-const OUT = path.resolve(new URL("..", import.meta.url).pathname, "src/assets/pet/badge-paw.png");
+const OUT = fileURLToPath(new URL("../src/assets/pet/badge-paw.png", import.meta.url));
 
 console.log(`src  : ${SRC}`);
 console.log(`out  : ${OUT}\n`);
 
 if (!fs.existsSync(SRC)) fail(`원본 없음: ${SRC}`);
-const sheet = PNG.sync.read(fs.readFileSync(SRC));
+let sheet;
+try {
+  sheet = PNG.sync.read(fs.readFileSync(SRC));
+} catch (e) {
+  fail(`원본 PNG 읽기 실패(손상/PNG 아님): ${SRC}\n  ${e.message}`);
+}
 if (sheet.width !== SRC_W || sheet.height !== SRC_H)
   fail(`CatUI.png 치수 예상과 다름: ${sheet.width}×${sheet.height} (기대 ${SRC_W}×${SRC_H})`);
 

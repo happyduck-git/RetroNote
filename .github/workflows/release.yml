@@ -102,9 +102,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [ -f ".pet-assets/badge-paw.png" ] || { echo "::error::missing .pet-assets/badge-paw.png (private assets repo)"; exit 1; }
           mkdir -p src/assets/pet
           cp ".pet-assets/badge-paw.png" src/assets/pet/badge-paw.png
-          [ -f "src/assets/pet/badge-paw.png" ] || { echo "::error::missing src/assets/pet/badge-paw.png"; exit 1; }
           echo "pet badge injected: 1 file OK"
 
       # 릴리스 노트 결정: release-notes/<tag>.md 가 있으면 그 내용을 그대로 쓰고,
