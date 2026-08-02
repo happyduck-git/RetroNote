@@ -6,6 +6,7 @@ import { makePetBehavior } from "./behavior.js";
 import { makePetDisplayController } from "./pet-display.js";
 import { assetBaseFor, normalizeCat } from "./cats.js";
 import { ANIMATIONS, AMBIENT_ANIM_KEYS, animKeyFor } from "./sprite.js";
+import { petBadgeVisible } from "./badge-alert.js";
 
 // 장난감/밥 에셋(유료, gitignore). 경로는 문서(pet.html) 기준 상대 — 펫 스프라이트와 동일 방식.
 // 추격 장난감(장난치기에서 랜덤): 공 3색 + 쥐. 쥐는 좀 더 빠르게 움직여 "사냥" 느낌.
@@ -109,7 +110,7 @@ export function initPetWindow() {
   }
 
   function updateDot() {
-    dot.hidden = !(unread > 0 && !mainFocused);
+    dot.hidden = !petBadgeVisible(unread, mainFocused);
   }
 
   // --- 상호작용 아이템/모드 — 한 번에 하나만 ---
@@ -482,8 +483,8 @@ export function initPetWindow() {
     const onUp = () => {
       cleanup();
       if (dragging) return;
-      // 빨간 점(안 읽음) 떠 있을 때만 클릭 → 메인 창 앞으로(#92). 아니면 쓰다듬기.
-      if (unread > 0 && !mainFocused) {
+      // 안 읽음 배지 떠 있을 때만 클릭 → 메인 창 앞으로(#92). 아니면 쓰다듬기.
+      if (petBadgeVisible(unread, mainFocused)) {
         T?.core?.invoke?.("reveal_main_window")?.catch((err) =>
           console.error("reveal_main_window invoke failed:", err),
         );
