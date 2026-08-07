@@ -10,6 +10,8 @@ globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 
 const { renderMessageRow, renderMessageText, renderDateDivider } = await import("./message-row.js");
+const { SUPABASE } = await import("../../config.js");
+SUPABASE.url = "https://x.supabase.co"; // allowlist(attachment-url)가 이 호스트를 허용하도록 설정
 
 after(() => {
   globalThis.window = saved.window;
@@ -74,9 +76,9 @@ describe("renderMessageRow: 적대적 입력은 텍스트로만 삽입(HTML 미�
   });
 });
 
-describe("renderMessageRow: 첨부 렌더", () => {
-  test("attachment 이 있으면 img.src 세팅 + data-kind + has-attach 클래스", () => {
-    const url = "https://x.supabase.co/storage/o/a.jpg";
+describe("renderMessageRow: 첨부 렌더 + 호스트 allowlist", () => {
+  test("허용 호스트(Supabase)면 img.src 세팅 + data-kind + has-attach", () => {
+    const url = "https://x.supabase.co/storage/v1/object/public/chat-uploads/R/a.jpg";
     const row = renderMessageRow(
       msg({ text: "", attachment: { url, kind: "image", width: 200, height: 100 } }),
     );
@@ -87,14 +89,22 @@ describe("renderMessageRow: 첨부 렌더", () => {
     assert.ok(row.className.includes("has-attach"));
   });
 
-  test("첨부 URL 은 src 속성값으로만 반영되고 마크업을 만들지 않는다", () => {
-    const url = "https://evil.example/track.gif";
-    const row = renderMessageRow(
-      msg({ text: "", attachment: { url, kind: "gif_external" } }),
-    );
+  test("허용 호스트(Giphy) gif_external 도 img 로 렌더", () => {
+    const url = "https://media3.giphy.com/media/xxx/giphy.gif";
+    const row = renderMessageRow(msg({ text: "", attachment: { url, kind: "gif_external" } }));
     const img = row.querySelector("img.msg-image");
+    assert.ok(img);
     assert.equal(img.getAttribute("src"), url);
-    assert.equal(row.querySelector(".msg-image-wrap").dataset.kind, "gif_external");
+  });
+
+  test("허용되지 않은 호스트면 img 를 만들지 않고 차단 표시(추적 비콘 방지)", () => {
+    const url = "https://evil.example/track.gif";
+    const row = renderMessageRow(msg({ text: "", attachment: { url, kind: "gif_external" } }));
+    assert.equal(row.querySelector("img.msg-image"), null, "요청을 유발하는 img 가 없어야 한다");
+    const broken = row.querySelector(".msg-image-broken");
+    assert.ok(broken);
+    assert.equal(broken.textContent, "[ × blocked ]");
+    assert.ok(row.className.includes("has-attach")); // wrap 은 존재
   });
 });
 
