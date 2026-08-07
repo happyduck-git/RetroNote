@@ -2,6 +2,7 @@
 import { el, pad2 } from "../../core/dom.js";
 import { tokenizeMessage } from "../../chat/linkify.js";
 import { openExternal } from "../../platform/opener.js";
+import { isAllowedAttachmentUrl } from "../../chat/attachment-url.js";
 
 function fmtTime(ts) {
   const d = new Date(ts);
@@ -43,16 +44,22 @@ export function renderMessageRow(m) {
     if (m.attachment.width && m.attachment.height) {
       wrap.style.aspectRatio = `${m.attachment.width} / ${m.attachment.height}`;
     }
-    const img = el("img", {
-      class: "msg-image",
-      src: m.attachment.url,
-      alt: "",
-      loading: "lazy",
-    });
-    img.addEventListener("error", () => {
-      wrap.replaceChildren(el("span", { class: "msg-image-broken", text: "[ × broken ]" }));
-    });
-    wrap.append(img);
+    // 허용된 호스트(우리 Storage / Giphy)만 <img> 로 로드한다. 그 외 호스트는 요청 자체를
+    // 막아 악의적 멤버의 추적 비콘(IP·온라인 여부 유출)을 차단한다.
+    if (isAllowedAttachmentUrl(m.attachment.url)) {
+      const img = el("img", {
+        class: "msg-image",
+        src: m.attachment.url,
+        alt: "",
+        loading: "lazy",
+      });
+      img.addEventListener("error", () => {
+        wrap.replaceChildren(el("span", { class: "msg-image-broken", text: "[ × broken ]" }));
+      });
+      wrap.append(img);
+    } else {
+      wrap.append(el("span", { class: "msg-image-broken", text: "[ × blocked ]" }));
+    }
     children.push(wrap);
   }
   if (m.text) {
