@@ -16,17 +16,22 @@
 // 그 목록(localStorage)이 로그인/서버 동기화 도중 잠깐 비는 순간 메시지를 통째로 버리는 버그가 있어 제거했다.
 //
 // DI factory 로 협력자를 주입받아 테스트 가능하게 한다. 기본 export 는 실제 모듈로 배선한 인스턴스.
-import { getClient } from "../auth/auth.js";
+import { getClient, ensureFreshSession } from "../auth/auth.js";
 import { setUnread, isAppFocused } from "../platform/badge.js";
+import { subscribeChannel } from "./channel-subscribe.js";
 
 export function makeMessageNotifier({
   getClient,
   isAppFocused,
   setUnread,
+  ensureFreshSession = async () => {},
 }) {
   let channel = null;
   let client = null;
   let starting = false;
+  let currentUserId = null;
+  let status = "connecting";
+  const statusSubs = new Set(); // 연결 상태 구독자(로비 표시 + 재연결 감독자)
   const unreadByRoom = new Map(); // code -> 안 읽은 수
   const subs = new Set(); // 로비 등 구독자(방별 카운터 변경 시 재렌더)
 
@@ -125,24 +130,69 @@ export function makeMessageNotifier({
     return () => petUnreadSubs.delete(cb);
   }
 
+  function setStatus(next) {
+    if (status === next) return;
+    status = next;
+    for (const fn of statusSubs) {
+      try { fn(status); } catch (e) { console.error("notifier status subscriber failed:", e); }
+    }
+  }
+
+  // 연결 상태 구독. unsubscribe 를 돌려준다.
+  function onStatus(cb) {
+    statusSubs.add(cb);
+    return () => statusSubs.delete(cb);
+  }
+
+  function getStatus() {
+    return status;
+  }
+
+  // 라이브러리가 상태를 안 알려준 채 죽은 경우(좀비)를 가려낸다.
+  function isHealthy() {
+    return !!channel && channel.state === "joined";
+  }
+
+  // 채널만 연다. 실패는 호출 측으로 전달 — reconnect 가 재시도 판단에 쓴다.
+  async function openChannel() {
+    client = await getClient();
+    const ch = client
+      .channel("notify:messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => handleInsert(currentUserId, payload.new),
+      );
+    channel = ch;
+    await subscribeChannel(ch, setStatus);
+  }
+
   async function start(userId) {
     // 이미 떠 있으면(또는 사용자 전환으로 재호출) 먼저 깨끗이 정리 → 이중 채널 방지.
     await stop();
     if (starting) return;
     starting = true;
+    currentUserId = userId;
     try {
-      client = await getClient();
-      channel = client
-        .channel("notify:messages")
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "messages" },
-          (payload) => handleInsert(userId, payload.new),
-        );
-      await channel.subscribe();
+      await openChannel();
     } catch (e) {
       console.error("message notifier start failed:", e);
-      await stop();
+      await teardownChannel();
+    } finally {
+      starting = false;
+    }
+  }
+
+  // 채널만 갈아 끼운다 — 안 읽음 카운터는 건드리지 않는다(재연결이 배지를 지우면 안 된다).
+  // start 와 겹치면 실패로 알린다 — 조용히 통과시키면 감독자가 "붙었다"고 잘못 판단한다.
+  async function reconnect() {
+    if (!currentUserId) throw new Error("not started");
+    if (starting) throw new Error("busy");
+    starting = true;
+    try {
+      await teardownChannel();
+      await ensureFreshSession();
+      await openChannel();
     } finally {
       starting = false;
     }
@@ -165,7 +215,8 @@ export function makeMessageNotifier({
     }
   }
 
-  async function stop() {
+  // 채널만 정리. 카운터는 그대로 둔다.
+  async function teardownChannel() {
     try {
       if (channel && client) await client.removeChannel(channel);
     } catch (e) {
@@ -173,6 +224,12 @@ export function makeMessageNotifier({
     } finally {
       channel = null;
     }
+  }
+
+  async function stop() {
+    await teardownChannel();
+    currentUserId = null;
+    setStatus("connecting");
     clearAll();
   }
 
@@ -193,6 +250,11 @@ export function makeMessageNotifier({
     clearRoom,
     getUnreadByRoom,
     subscribe,
+    // 연결 복구
+    reconnect,
+    isHealthy,
+    onStatus,
+    getStatus,
     // 펫 전용
     setActiveRoom,
     onMessageArrived,
@@ -201,10 +263,11 @@ export function makeMessageNotifier({
   };
 }
 
-// 실제 wiring: main.js 가 로그인/로그아웃 시 start/stop, room-view 가 입장 시 clearRoom,
-// lobby-view 가 getUnreadByRoom/subscribe 를 호출한다.
+// 실제 wiring: main.js 가 로그인/로그아웃 시 start/stop(notifier-connection 경유),
+// room-view 가 입장 시 clearRoom, lobby-view 가 getUnreadByRoom/subscribe 를 호출한다.
 export const messageNotifier = makeMessageNotifier({
   getClient,
   isAppFocused,
   setUnread,
+  ensureFreshSession,
 });

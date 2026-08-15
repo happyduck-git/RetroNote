@@ -19,7 +19,7 @@ import { settingsView } from "./views/settings-view.js";
 import { petSettingsView } from "./views/pet-settings-view.js";
 import { getSession, onAuthChange } from "./auth/auth.js";
 import { clearLocalSession, getLastUid, setLastUid } from "./chat/session.js";
-import { messageNotifier } from "./chat/message-notifier.js";
+import { notifierConnection } from "./chat/notifier-connection.js";
 
 // 사용자 전환(A→B) 감지: 마지막으로 본 uid 와 현재 uid 가 다르면 device-local 데이터 정리.
 // 처음 로그인 (last 가 null) 일 때는 정리할 게 없으므로 last 만 갱신.
@@ -104,7 +104,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 부팅 시점에 사용자가 바뀌어 있다면(앱 종료 중 다른 계정으로 로그인 등) 정리.
       syncSessionScope(session?.user?.id || null);
       // 새 메시지 알림: 로그인 상태면 앱 수준 알림 구독 시작(fire-and-forget — 라우팅 비차단).
-      if (session?.user?.id) messageNotifier.start(session.user.id);
+      // 감독자가 함께 붙어 끊기면 스스로 다시 연결한다.
+      if (session?.user?.id) notifierConnection.start(session.user.id);
       router.navigate(session ? "home" : "login");
     } catch (e) {
       console.error("session check failed:", e);
@@ -114,7 +115,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 새 로그인 시: 이전 uid 와 다르면 정리 (A→B 전환 보호).
     onAuthChange((event, session) => {
       if (event === "SIGNED_OUT") {
-        messageNotifier.stop(); // 알림 구독 정리
+        notifierConnection.stop(); // 알림 구독 + 감독자 정리
         clearLocalSession();
         setLastUid(null);
         clearDraft(); // 초안 폐기 + 진행 중 캡처 무효화 → navigate 와 호출 순서 무관.
@@ -122,7 +123,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       } else if (event === "SIGNED_IN") {
         syncSessionScope(session?.user?.id || null);
         // start 내부에서 먼저 stop 하므로 사용자 전환 시에도 이전 구독을 갈아끼운다.
-        if (session?.user?.id) messageNotifier.start(session.user.id);
+        if (session?.user?.id) notifierConnection.start(session.user.id);
       }
     }).catch((e) => console.error("auth subscribe failed:", e));
   } else {
