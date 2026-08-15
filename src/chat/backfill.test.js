@@ -92,6 +92,40 @@ describe("createBackfiller", () => {
     assert.equal(callCount, 1);
   });
 
+  test("성공하면 true, 실패하면 false 를 돌려준다", async () => {
+    const origErr = console.error;
+    console.error = () => {};
+    try {
+      let i = 0;
+      const fetchMessages = () => {
+        i++;
+        return i === 1 ? Promise.reject(new Error("network down")) : Promise.resolve([]);
+      };
+      const store = createMessageStore("user-1");
+      const backfill = createBackfiller({ store, fetchMessages, firstJoinedAt: 0, code: "ROOM1" });
+      assert.equal(await backfill(), false);
+      assert.equal(await backfill(), true);
+    } finally {
+      console.error = origErr;
+    }
+  });
+
+  test("이미 진행 중이라 건너뛴 호출은 실패로 보지 않는다", async () => {
+    let resolve;
+    const pending = new Promise((r) => (resolve = r));
+    const store = createMessageStore("user-1");
+    const backfill = createBackfiller({
+      store,
+      fetchMessages: () => pending,
+      firstJoinedAt: 0,
+      code: "ROOM1",
+    });
+    const p1 = backfill();
+    assert.equal(await backfill(), true);
+    resolve([]);
+    await p1;
+  });
+
   test("fetch 실패는 catch로 흡수되고 다음 호출은 정상 동작", async () => {
     const origErr = console.error;
     console.error = () => {}; // 테스트 출력 노이즈 차단

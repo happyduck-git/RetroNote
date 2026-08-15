@@ -3,6 +3,8 @@
 //
 // transport API:
 //   connect(roomCode, { nickname, clientId }) -> Promise   // 구독 준비 완료 시 resolve
+//   reconnect() -> Promise                                  // 옛 채널 버리고 새 채널로 재구독
+//   isHealthy() -> boolean                                  // 채널이 실제로 살아 있는지(좀비 판별)
 //   send(message) -> Promise                                // message = envelope, DB INSERT
 //   leave() -> Promise                                      // unsubscribe + close, idempotent
 //   track(payload) -> void                                  // presence payload 갱신(닉네임 변경 등)

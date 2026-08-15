@@ -48,6 +48,17 @@ export async function getSession() {
   return data?.session || null;
 }
 
+// 재연결 직전에 토큰을 한 번 확인한다 — 만료된 토큰으로 붙으면 채널이 거절당한다.
+// getSession 은 만료된 세션이면 내부에서 갱신을 돌린다. 실패는 흡수: 그래도 붙어 보고,
+// 안 되면 재시도 루프가 다시 온다.
+export async function ensureFreshSession() {
+  try {
+    await getSession();
+  } catch (e) {
+    console.error("session refresh failed:", e);
+  }
+}
+
 // 현재 로그인 사용자의 auth.uid. 로그인 안 된 상태면 null.
 // 메시지 ownership 판정(message-store) 및 본인 메시지 envelope 채움에 사용.
 export async function getCurrentUserId() {

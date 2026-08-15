@@ -5,16 +5,19 @@
 // fetchMessages는 의존성 주입 — 테스트에서 mock 가능.
 export function createBackfiller({ store, fetchMessages, firstJoinedAt, code }) {
   let inFlight = false;
+  // 반환값은 "이번 보충이 성공했는지" — 실패는 연결이 실제로 죽었다는 신호로 쓰인다.
   return async function backfill() {
-    if (inFlight) return;
+    if (inFlight) return true;
     inFlight = true;
     try {
       const cur = store.get();
       const sinceTs = cur.length ? cur[cur.length - 1].ts : firstJoinedAt;
       const fresh = await fetchMessages(code, sinceTs);
       for (const m of fresh) store.add(m);
+      return true;
     } catch (e) {
       console.error("backfill failed:", e);
+      return false;
     } finally {
       inFlight = false;
     }
