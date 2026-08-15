@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { subscribeChannel, CHANNEL_STATUS_MAP } from "./channel-subscribe.js";
+import { subscribeChannel } from "./channel-subscribe.js";
 
 // subscribe(cb) 를 붙잡아 테스트가 원하는 순서로 상태를 흘려보내는 가짜 채널.
 function makeFakeChannel() {
@@ -52,7 +52,6 @@ describe("subscribeChannel", () => {
     subscribeChannel(ch, (s) => seen.push(s), { setTimer: () => 1, clearTimer: () => {} });
     ch.cb("JOINING");
     assert.deepEqual(seen, ["connecting"]);
-    assert.equal(CHANNEL_STATUS_MAP.SUBSCRIBED, "connected");
   });
 
   test("아무 상태도 오지 않으면 제한 시간 뒤에 끊는다", async () => {
@@ -65,5 +64,40 @@ describe("subscribeChannel", () => {
     });
     fire();
     await assert.rejects(p, /timeout/);
+  });
+});
+
+describe("subscribeChannel 예외 방어", () => {
+  test("onStatus 가 던져도 promise 는 확정된다", async () => {
+    const origErr = console.error;
+    console.error = () => {};
+    try {
+      const ch = makeFakeChannel();
+      const p = subscribeChannel(ch, () => { throw new Error("boom"); }, { setTimer: () => 1, clearTimer: () => {} });
+      ch.cb("SUBSCRIBED");
+      await p; // 던지는 구독자 때문에 제한 시간까지 매달리면 안 된다
+    } finally {
+      console.error = origErr;
+    }
+  });
+
+  test("onStatus 가 던져도 그 뒤 상태 알림은 계속된다", async () => {
+    const origErr = console.error;
+    console.error = () => {};
+    try {
+      const seen = [];
+      let first = true;
+      const ch = makeFakeChannel();
+      const p = subscribeChannel(ch, (s) => {
+        if (first) { first = false; throw new Error("boom"); }
+        seen.push(s);
+      }, { setTimer: () => 1, clearTimer: () => {} });
+      ch.cb("SUBSCRIBED");
+      await p;
+      ch.cb("CLOSED");
+      assert.deepEqual(seen, ["closed"]);
+    } finally {
+      console.error = origErr;
+    }
   });
 });

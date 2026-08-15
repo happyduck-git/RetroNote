@@ -212,7 +212,8 @@ export function closeRoom(rawCode) {
   const code = normalize(rawCode);
   const entry = rooms.get(code);
   if (!entry) return;
-  entry.transport.leave();
+  // 기다리지 않는다(unmount 에서 동기 호출) — 대신 거부를 흘리지 않게 받아 둔다.
+  entry.transport.leave().catch((e) => console.error("leave failed:", e));
   entry.store.stop();
   rooms.delete(code);
 }

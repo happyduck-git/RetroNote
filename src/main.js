@@ -21,6 +21,15 @@ import { getSession, onAuthChange } from "./auth/auth.js";
 import { clearLocalSession, getLastUid, setLastUid } from "./chat/session.js";
 import { notifierConnection } from "./chat/notifier-connection.js";
 
+// 알림 채널을 지금 어느 계정으로 띄워 뒀는지. supabase 는 창을 다시 보일 때마다 SIGNED_IN 을
+// 다시 쏘는데, 그때마다 start() 하면 채널을 뜯으면서 안 읽음 카운터까지 지워진다.
+let notifierUid = null;
+
+function startNotifier(uid) {
+  notifierUid = uid;
+  notifierConnection.start(uid).catch((e) => console.error("notifier start failed:", e));
+}
+
 // 사용자 전환(A→B) 감지: 마지막으로 본 uid 와 현재 uid 가 다르면 device-local 데이터 정리.
 // 처음 로그인 (last 가 null) 일 때는 정리할 게 없으므로 last 만 갱신.
 // 로그아웃 (current 가 null) 일 때도 last 만 비워둔다 — 정리는 SIGNED_OUT 핸들러에서 별도 수행.
@@ -105,7 +114,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       syncSessionScope(session?.user?.id || null);
       // 새 메시지 알림: 로그인 상태면 앱 수준 알림 구독 시작(fire-and-forget — 라우팅 비차단).
       // 감독자가 함께 붙어 끊기면 스스로 다시 연결한다.
-      if (session?.user?.id) notifierConnection.start(session.user.id);
+      if (session?.user?.id) startNotifier(session.user.id);
       router.navigate(session ? "home" : "login");
     } catch (e) {
       console.error("session check failed:", e);
@@ -115,15 +124,20 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 새 로그인 시: 이전 uid 와 다르면 정리 (A→B 전환 보호).
     onAuthChange((event, session) => {
       if (event === "SIGNED_OUT") {
-        notifierConnection.stop(); // 알림 구독 + 감독자 정리
+        notifierUid = null;
+        notifierConnection.stop().catch((e) => console.error("notifier stop failed:", e)); // 알림 구독 + 감독자 정리
         clearLocalSession();
         setLastUid(null);
         clearDraft(); // 초안 폐기 + 진행 중 캡처 무효화 → navigate 와 호출 순서 무관.
         router.navigate("login");
       } else if (event === "SIGNED_IN") {
-        syncSessionScope(session?.user?.id || null);
-        // start 내부에서 먼저 stop 하므로 사용자 전환 시에도 이전 구독을 갈아끼운다.
-        if (session?.user?.id) notifierConnection.start(session.user.id);
+        const uid = session?.user?.id || null;
+        syncSessionScope(uid);
+        // 같은 계정이면(창 복귀로 다시 온 SIGNED_IN) 복구만 건다 — 재시작은 안 읽음 카운터를 지운다.
+        // 계정이 바뀌었으면 start 가 내부에서 먼저 stop 하므로 이전 구독이 갈아끼워진다.
+        if (!uid) return;
+        if (uid === notifierUid) notifierConnection.wake();
+        else startNotifier(uid);
       }
     }).catch((e) => console.error("auth subscribe failed:", e));
   } else {

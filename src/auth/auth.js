@@ -7,7 +7,7 @@ let clientPromise = null;
 
 export async function getClient() {
   if (!clientPromise) {
-    clientPromise = (async () => {
+    const p = (async () => {
       const { createClient } = await import("../vendor/supabase.js");
       return createClient(SUPABASE.url, SUPABASE.anonKey, {
         auth: {
@@ -17,6 +17,12 @@ export async function getClient() {
         },
       });
     })();
+    // 실패한 약속을 캐시에 남기면 재연결 루프가 30초마다 같은 실패를 영원히 반복한다.
+    // 여기서 한 번 받아 두면 unhandled rejection 도 안 뜨고, 호출 측은 p 를 그대로 받아 실패를 본다.
+    p.catch(() => {
+      if (clientPromise === p) clientPromise = null;
+    });
+    clientPromise = p;
   }
   return clientPromise;
 }

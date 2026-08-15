@@ -26,7 +26,10 @@ Chat only activates if Supabase keys are present. `config.js` ships with empty d
 - 간격: `RETRY_DELAYS_MS = [0, 2s, 5s, 10s, 30s]` — 30초에서 멈춘다. 창이 앞으로 오면 처음으로 되돌린다.
   붙자마자 끊기는(flap) 경우엔 벌점을 매겨 간격을 벌리고, 30초 넘게 잘 붙어 있으면 벌점을 씻는다.
 - 좀비 판별: 상태가 `connected` 여도 `isHealthy()`(채널이 실제로 `joined`)가 거짓이거나
-  복귀 시 `backfill()` 이 실패하면 죽은 것으로 보고 다시 붙인다.
+  복귀 시 `backfill()` 이 **두 번 연속** 실패하면 죽은 것으로 보고 다시 붙인다.
+  깨우기 신호(포커스·보이기·online)로 시작되는 재시도에는 최소 간격 2초가 걸린다 —
+  알트탭 한 번에 신호가 여럿 오고 방을 열면 감독자가 둘이라 그대로 두면 요청이 배로 나간다.
+  사용자가 상태를 눌러 시작한 재시도(`retryNow`)만 그 간격을 무시한다.
 - 재연결 직전 `ensureFreshSession()` 으로 만료된 토큰을 갱신한다 — 만료 토큰으로 붙으면 서버가 거절한다.
 - 화면 상태 4가지(`connecting/connected/recovering/waiting`)는 `views/conn-status.js` 가 문구로 바꾼다.
 - 전역 알림 채널은 `chat/notifier-connection.js` 가 감독한다. **재연결이 안 읽음 카운터를 지우면 안 되므로**

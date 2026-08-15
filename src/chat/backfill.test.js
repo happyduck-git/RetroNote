@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createMessageStore } from "./message-store.js";
-import { createBackfiller } from "./backfill.js";
+import { createBackfiller, createBackfillGate } from "./backfill.js";
 
 // 호출 인자를 기록하는 가짜 fetchMessages.
 function makeFetch(impl) {
@@ -152,5 +152,47 @@ describe("createBackfiller", () => {
     } finally {
       console.error = origErr;
     }
+  });
+});
+
+describe("createBackfillGate", () => {
+  test("방에 들어온 직후의 첫 연결은 건너뛴다(seed 가 이미 채웠다)", () => {
+    const gate = createBackfillGate();
+    assert.equal(gate.onStatus("connecting"), false);
+    assert.equal(gate.onStatus("connected"), false);
+  });
+
+  test("한 번 붙었다가 다시 붙으면 보충한다", () => {
+    const gate = createBackfillGate();
+    gate.onStatus("connected");
+    assert.equal(gate.onStatus("closed"), false);
+    assert.equal(gate.onStatus("connected"), true);
+  });
+
+  test("첫 연결이 실패한 뒤 재연결로 처음 붙어도 보충한다", () => {
+    const gate = createBackfillGate();
+    assert.equal(gate.onStatus("connecting"), false);
+    assert.equal(gate.onStatus("error"), false);
+    assert.equal(gate.onStatus("connected"), true, "그 사이 온 메시지를 놓치면 안 된다");
+  });
+
+  test("connecting 은 끊김으로 세지 않는다", () => {
+    const gate = createBackfillGate();
+    gate.onStatus("connecting");
+    gate.onStatus("connecting");
+    assert.equal(gate.onStatus("connected"), false);
+  });
+
+  test("markFailed 도 다음 연결에서 보충을 부른다", () => {
+    const gate = createBackfillGate();
+    gate.markFailed();
+    assert.equal(gate.onStatus("connected"), true);
+  });
+
+  test("보충하고 나면 표시가 지워진다", () => {
+    const gate = createBackfillGate();
+    gate.onStatus("error");
+    assert.equal(gate.onStatus("connected"), true);
+    assert.equal(gate.hasConnected(), true);
   });
 });

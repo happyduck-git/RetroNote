@@ -68,14 +68,15 @@ export const lobbyView = {
     // 배지·알림용 전역 채널 상태. 정상일 땐 숨기고, 끊겼을 때만 한 줄 띄운다(클릭하면 즉시 재시도).
     const connEl = el("button", {
       class: "btn lobby-conn",
-      title: "click to retry",
       hidden: true,
       onClick: () => notifierConnection.retryNow(),
     });
+    // 첫 연결 중에도 숨긴다 — connecting 은 감독자의 20초 상한에 걸려 반드시 recovering/waiting 으로
+    // 넘어가므로(아무 상태도 삼켜지지 않는다), 그때부터 띄우면 이 줄이 뜨는 게 곧 문제라는 신호가 된다.
     function renderConn(s) {
-      const connected = s.state === "connected";
-      connEl.hidden = connected;
-      if (!connected) renderConnStatus(connEl, connStatusLabel(s));
+      const quiet = s.state === "connected" || s.state === "connecting";
+      connEl.hidden = quiet;
+      if (!quiet) renderConnStatus(connEl, connStatusLabel(s));
     }
     renderConn(notifierConnection.getState());
 

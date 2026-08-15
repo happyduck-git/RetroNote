@@ -575,6 +575,16 @@ body {
   opacity: 1;
 }
 
+/* 여러 번 연달아 실패한 상태 — 기다려도 안 되는 쪽에 가깝다는 신호로 더 또렷하게. */
+.conn-stuck {
+  animation: conn-stuck-pulse 2s ease-in-out infinite;
+}
+
+@keyframes conn-stuck-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 /* 복구 중 점 3개가 차례로 밝아진다 — 뒤에서 뭔가 하고 있다는 신호. */
 @keyframes conn-dot {
   0%, 60% { opacity: 0.2; }
@@ -588,8 +598,11 @@ body {
 .conn-dot:nth-of-type(2) { animation-delay: 0.2s; }
 .conn-dot:nth-of-type(3) { animation-delay: 0.4s; }
 
-.conn-retry {
-  opacity: 0.9;
+/* 문제가 없을 때는 눌러도 아무 일이 없다 — 커서·hover·툴팁·클릭을 한꺼번에 끄고,
+   mousedown 이 조상으로 넘어가 이 글자 위에서도 창을 끌 수 있게 한다. */
+.room-status:disabled,
+.lobby-conn:disabled {
+  pointer-events: none;
 }
 
 .room-leave {
@@ -1199,7 +1212,6 @@ body {
   position: static;
   align-self: flex-end;
   font-size: calc(var(--computer-width) / 50);
-  opacity: 0.9;
   padding: 0;
 }
 

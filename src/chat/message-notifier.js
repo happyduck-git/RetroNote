@@ -30,6 +30,7 @@ export function makeMessageNotifier({
   let client = null;
   let starting = false;
   let currentUserId = null;
+  let gen = 0; // stop/start 뒤에 끝난 옛 구독이 살아남지 못하게 하는 세대 번호
   let status = "connecting";
   const statusSubs = new Set(); // 연결 상태 구독자(로비 표시 + 재연결 감독자)
   const unreadByRoom = new Map(); // code -> 안 읽은 수
@@ -154,32 +155,48 @@ export function makeMessageNotifier({
   }
 
   // 채널만 연다. 실패는 호출 측으로 전달 — reconnect 가 재시도 판단에 쓴다.
-  async function openChannel() {
-    client = await getClient();
-    const ch = client
+  // userId 는 인자로 받아 핸들러 클로저에 담는다 — 모듈 변수를 읽으면 정리 도중 null 이 섞인다.
+  async function openChannel(userId, myGen) {
+    const c = await getClient();
+    if (myGen !== gen) return;
+    client = c;
+    const ch = c
       .channel("notify:messages")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
-        (payload) => handleInsert(currentUserId, payload.new),
+        (payload) => handleInsert(userId, payload.new),
       );
     channel = ch;
-    await subscribeChannel(ch, setStatus);
+    await subscribeChannel(ch, (s) => {
+      if (myGen === gen) setStatus(s);
+    });
+    // 구독이 끝나기 전에 세대가 바뀌었다면 이 채널은 주인이 없다 — 스스로 치운다.
+    if (myGen !== gen) {
+      if (channel === ch) channel = null;
+      try {
+        await c.removeChannel(ch);
+      } catch (e) {
+        console.error("notifier removeChannel failed:", e);
+      }
+    }
   }
 
   async function start(userId) {
     // 이미 떠 있으면(또는 사용자 전환으로 재호출) 먼저 깨끗이 정리 → 이중 채널 방지.
     await stop();
-    if (starting) return;
+    const myGen = gen;
     starting = true;
     currentUserId = userId;
     try {
-      await openChannel();
+      await openChannel(userId, myGen);
     } catch (e) {
       console.error("message notifier start failed:", e);
       await teardownChannel();
+      // 실패를 알려야 감독자가 재시도 일정을 잡는다. 조용히 끝내면 영영 connecting 에 머문다.
+      if (myGen === gen) setStatus("error");
     } finally {
-      starting = false;
+      if (myGen === gen) starting = false;
     }
   }
 
@@ -188,13 +205,16 @@ export function makeMessageNotifier({
   async function reconnect() {
     if (!currentUserId) throw new Error("not started");
     if (starting) throw new Error("busy");
+    const myGen = gen;
+    const userId = currentUserId;
     starting = true;
     try {
       await teardownChannel();
       await ensureFreshSession();
-      await openChannel();
+      if (myGen !== gen) throw new Error("superseded");
+      await openChannel(userId, myGen);
     } finally {
-      starting = false;
+      if (myGen === gen) starting = false;
     }
   }
 
@@ -227,6 +247,8 @@ export function makeMessageNotifier({
   }
 
   async function stop() {
+    gen++; // 진행 중인 start/reconnect 를 무효화한다 — 늦게 끝나도 채널을 남기지 못한다.
+    starting = false;
     await teardownChannel();
     currentUserId = null;
     setStatus("connecting");

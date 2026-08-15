@@ -16,11 +16,9 @@ export function buildHeader(code, { onLeave, onRetry, nicknameEditor } = {}) {
       console.error("copy failed:", e);
     }
   });
-  // 상태 표시는 버튼이다 — 끊겼을 때 눌러서 즉시 다시 시도할 수 있고,
-  // button 이라 창 드래그 핸들러가 클릭을 삼키지 않는다(window-controls 의 드래그 예외).
+  // 문구·툴팁·눌림 여부는 renderConnStatus 가 상태에 맞춰 관리한다(출처를 한 곳으로).
   const statusEl = el("button", {
     class: "btn room-status",
-    title: "click to retry",
     text: "connecting",
     onClick: onRetry,
   });
