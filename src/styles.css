@@ -300,7 +300,8 @@ body {
 .lobby-btn,
 .room-copy,
 .room-leave,
-.room-send {
+.room-send,
+.room-status {
   position: static;
 }
 
@@ -564,13 +565,31 @@ body {
   opacity: 0.8;
   font-size: calc(var(--computer-width) / 50);
   white-space: nowrap;
+  padding: 0; /* .btn 의 padding 이 헤더 간격을 밀어내지 않도록 */
 }
 
-/* connState === "error" 일 때만 적용 — .msg.failed 와 톤 통일(#ff5a5a). */
-.room-status.room-status--error {
+/* 끊긴 상태 강조 — .msg.failed 와 톤 통일(#ff5a5a). 방 헤더·로비가 공유한다. */
+.conn-error {
   color: #ff5a5a;
   text-shadow: 0 0 4px rgba(255, 90, 90, 0.7);
   opacity: 1;
+}
+
+/* 복구 중 점 3개가 차례로 밝아진다 — 뒤에서 뭔가 하고 있다는 신호. */
+@keyframes conn-dot {
+  0%, 60% { opacity: 0.2; }
+  30% { opacity: 1; }
+}
+
+.conn-dot {
+  animation: conn-dot 1.2s infinite;
+}
+
+.conn-dot:nth-of-type(2) { animation-delay: 0.2s; }
+.conn-dot:nth-of-type(3) { animation-delay: 0.4s; }
+
+.conn-retry {
+  opacity: 0.9;
 }
 
 .room-leave {
@@ -1173,6 +1192,15 @@ body {
   max-height: 42%;
   overflow-y: auto;
   -webkit-app-region: no-drag;
+}
+
+/* 로비 전역 채널 상태 — 끊겼을 때만 보인다. */
+.lobby-conn {
+  position: static;
+  align-self: flex-end;
+  font-size: calc(var(--computer-width) / 50);
+  opacity: 0.9;
+  padding: 0;
 }
 
 .saved-rooms-header {
