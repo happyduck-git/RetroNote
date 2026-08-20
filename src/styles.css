@@ -913,7 +913,7 @@ body {
   flex: 0 0 auto;
 }
 
-/* ===== 첨부 메뉴 팝업 ([+] 클릭 → [img]/[gif]) ===== */
+/* ===== 첨부 메뉴 팝업 ([+] 클릭 → [img]/[gif]/[sticker]) ===== */
 /* GIF popup 과 같은 CRT 톤이지만 폭은 내용에 맞게 작게 — 입력 행 왼쪽 위에 뜬다. */
 .room-attach-menu {
   position: absolute;

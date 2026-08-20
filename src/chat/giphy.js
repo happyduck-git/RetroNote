@@ -1,11 +1,15 @@
 // Giphy v1 검색 API 래퍼. Tenor 가 신규 발급/운영을 종료(2026-06-30 전면 종료)해 이쪽으로 교체했다.
 // docs: developers.giphy.com/docs/api  (search + trending 엔드포인트)
 //
-// 키 노출에 대하여: Giphy 키는 클라이언트 사용을 전제로 하며 — Tenor 와 달리 referer/도메인
+// GIF(/v1/gifs)와 스티커(/v1/stickers)는 경로 첫 조각만 다르고 응답 봉투·rendition 구조가 같다.
+// 그래서 createGiphyApi(kind) 하나로 둘 다 만든다. 정규화·에러 처리·파라미터는 전부 공유한다.
+//
+// 키 노출에 대하여: Giphy 키는 클라이언트 사용을 전제로 하며, Tenor 와 달리 referer/도메인
 // 제한 장치가 없다. 앱에 박힌 키는 누구나 읽어 쓸 수 있고, 방어는 Giphy 의 백엔드 abuse
 // 모니터링에 의존한다. 신규(beta) 키는 과금이 없고 시간당 100회로 제한될 뿐(초과 시 throttle/
-// 정지)이지만, 이 한도는 앱 전체 사용자가 공유한다. 그래서 호출 측(room-view)에서 디바운스/
-// 최소 글자수/캐싱으로 호출을 아낀다. config.local.js 에 giphyApiKey 가 없으면 [gif] 버튼은 숨김.
+// 정지)이지만, 이 한도는 앱 전체 사용자가 공유한다. 그래서 호출 측(picker)에서 디바운스/
+// 최소 글자수/캐싱으로 호출을 아낀다. config.local.js 에 giphyApiKey 가 없으면 [gif]·[sticker]
+// 버튼은 숨김.
 //
 // rating=pg-13 을 매 호출에 넣어 성인물을 거른다(미지정 시 전체 등급이 섞여 나온다; best-effort).
 //
@@ -14,7 +18,7 @@
 
 import { CHAT } from "../config.js";
 
-const BASE = "https://api.giphy.com/v1/gifs";
+const BASE = "https://api.giphy.com/v1";
 // 한 페이지 크기. picker/paginator 가 무한 스크롤 페이지 크기로 재사용하므로 export.
 export const DEFAULT_LIMIT = 24;
 const RATING = "pg-13";
@@ -74,17 +78,18 @@ function normalize(result) {
   };
 }
 
-async function call(endpoint, params, signal) {
+// path 는 "gifs/search" · "stickers/trending" 처럼 kind 를 포함한 경로 조각.
+async function call(path, params, signal) {
   if (!isGiphyConfigured()) throw new Error("GIPHY_NOT_CONFIGURED");
   const qs = new URLSearchParams({
     api_key: CHAT.giphyApiKey,
     rating: RATING,
-    // limit 은 호출자(searchGifs/featuredGifs)가 항상 지정한다 — 여기 기본값을 두면 늘 덮어써지는 죽은 코드.
+    // limit 은 호출자(search/trending)가 항상 지정한다 — 여기 기본값을 두면 늘 덮어써지는 죽은 코드.
     ...params,
   });
-  const res = await fetch(`${BASE}/${endpoint}?${qs}`, { signal });
+  const res = await fetch(`${BASE}/${path}?${qs}`, { signal });
   if (res.status === 429) throw new GiphyRateLimitError();
-  if (!res.ok) throw new Error(`Giphy ${endpoint} ${res.status}`);
+  if (!res.ok) throw new Error(`Giphy ${path} ${res.status}`);
   const data = await res.json();
   // Giphy 응답 봉투: { data: [...], pagination, meta } — Tenor 의 results 와 헷갈리지 말 것.
   return (data.data || []).map(normalize).filter(Boolean);
@@ -96,14 +101,19 @@ function offsetParam(offset) {
   return offset > 0 ? { offset: String(offset) } : {};
 }
 
-// 검색. 빈 쿼리면 trending 과 동일 결과 — 호출 측 분기 부담을 줄임.
-export function searchGifs(query, { limit = DEFAULT_LIMIT, offset = 0, signal } = {}) {
-  const q = String(query || "").trim();
-  if (!q) return featuredGifs({ limit, offset, signal });
-  return call("search", { q, limit: String(limit), ...offsetParam(offset) }, signal);
-}
+// kind: "gifs" | "stickers". picker 가 이 인스턴스를 통째로 받아 무엇을 검색할지 결정한다.
+export function createGiphyApi(kind) {
+  // 트렌딩. 검색창이 비어 있는 초기 상태에서 표시.
+  function trending({ limit = DEFAULT_LIMIT, offset = 0, signal } = {}) {
+    return call(`${kind}/trending`, { limit: String(limit), ...offsetParam(offset) }, signal);
+  }
 
-// 트렌딩 GIF. 검색창이 비어 있는 초기 상태에서 표시. (Tenor 의 featured 대응 — 이름은 그대로 유지)
-export function featuredGifs({ limit = DEFAULT_LIMIT, offset = 0, signal } = {}) {
-  return call("trending", { limit: String(limit), ...offsetParam(offset) }, signal);
+  return {
+    // 빈 쿼리면 trending 과 동일 결과 — 호출 측 분기 부담을 줄임.
+    search(query, { limit = DEFAULT_LIMIT, offset = 0, signal } = {}) {
+      const q = String(query || "").trim();
+      if (!q) return trending({ limit, offset, signal });
+      return call(`${kind}/search`, { q, limit: String(limit), ...offsetParam(offset) }, signal);
+    },
+  };
 }

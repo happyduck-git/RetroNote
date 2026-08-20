@@ -48,33 +48,25 @@ export function buildAttachPreview({ onRemove }) {
   return { el: rootEl, show, hide };
 }
 
-// 첨부 메뉴 팝업. [+] 버튼 클릭 시 input row 위쪽에 작게 떠서 [img]/[gif] 두 항목을 보여 준다.
-// 이모지/GIF picker 와 동일한 popup 패턴(absolute, 바깥 클릭·ESC 로 닫힘). 항목 클릭 → 메뉴 닫고 콜백.
-export function buildAttachMenu({ onPickImage, onPickGif }) {
+// 첨부 메뉴 팝업. [+] 버튼 클릭 시 input row 위쪽에 작게 떠서 [img]/[gif]/[sticker] 세 항목을 보여 준다.
+// 이모지/Giphy picker 와 동일한 popup 패턴(absolute, 바깥 클릭·ESC 로 닫힘). 항목 클릭 → 메뉴 닫고 콜백.
+export function buildAttachMenu({ onPickImage, onPickGif, onPickSticker }) {
   let visible = false;
 
-  const imgItem = el("button", {
-    class: "btn room-attach-menu-item",
-    text: "[img]",
-    title: "Attach image",
-    type: "button",
-  });
-  const gifItem = el("button", {
-    class: "btn room-attach-menu-item",
-    text: "[gif]",
-    title: "Find a GIF",
-    type: "button",
-  });
-  imgItem.addEventListener("click", () => {
-    hide();
-    onPickImage();
-  });
-  gifItem.addEventListener("click", () => {
-    hide();
-    onPickGif();
-  });
+  function menuItem(text, title, onPick) {
+    const btn = el("button", { class: "btn room-attach-menu-item", text, title, type: "button" });
+    btn.addEventListener("click", () => {
+      hide();
+      onPick();
+    });
+    return btn;
+  }
 
-  const popupEl = el("div", { class: "room-attach-menu", hidden: true }, [imgItem, gifItem]);
+  const popupEl = el("div", { class: "room-attach-menu", hidden: true }, [
+    menuItem("[img]", "Attach image", onPickImage),
+    menuItem("[gif]", "Find a GIF", onPickGif),
+    menuItem("[sticker]", "Find a sticker", onPickSticker),
+  ]);
 
   function show() {
     if (visible) return;

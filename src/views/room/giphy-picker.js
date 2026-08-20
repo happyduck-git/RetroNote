@@ -1,23 +1,24 @@
-// Giphy GIF picker. 검색 입력 + 결과 그리드 + 하단 attribution.
+// Giphy picker. 검색 입력 + 결과 그리드 + 하단 attribution.
 import { el } from "../../core/dom.js";
 import { playKey } from "../../platform/sound.js";
-import { searchGifs, featuredGifs, DEFAULT_LIMIT } from "../../chat/giphy.js";
+import { createGiphyApi, DEFAULT_LIMIT } from "../../chat/giphy.js";
 import { createGifPaginator, shouldHaltLoadMore } from "../../chat/gif-paginator.js";
 
 // Giphy beta 키는 시간당 100회(앱 전체 공유) 한도라 호출을 아껴야 한다 — 디바운스를 넉넉히.
-const GIF_SEARCH_DEBOUNCE_MS = 600;
+const SEARCH_DEBOUNCE_MS = 600;
 
 // 상황별 카테고리 — 라벨이 곧 Giphy 검색어(영어). 미리 정한 쿼리라 호출이 예측 가능하고 캐싱이 잘 먹는다.
-const GIF_CATEGORIES = ["lol", "love", "yes", "no", "sad", "party", "hello", "wow", "clap", "cool"];
+const CATEGORIES = ["lol", "love", "yes", "no", "sad", "party", "hello", "wow", "clap", "cool"];
 
 // 무한 스크롤 바닥 근접 판정(px). room-view 의 near-top/near-bottom 과 같은 house style.
-const GIF_NEAR_BOTTOM_PX = 48;
+const NEAR_BOTTOM_PX = 48;
 // 검색어당 페이지 상한 — Giphy 공유 한도(시간당 100회) 보호. 5페이지 = offset 0/24/48/72/96 = 최대 120개.
-const GIF_MAX_PAGES = 5;
+const MAX_PAGES = 5;
 
-// Giphy GIF picker. 검색 입력 + 결과 그리드 + 하단 attribution.
+// Giphy picker. 검색 입력 + 결과 그리드 + 하단 attribution.
 // 이모지 picker 와 동일한 popup 패턴(absolute, input-row 위쪽). 셀 클릭 → onPick(gif) → picker 닫힘.
-export function buildGifPicker(onPick) {
+// kind("gifs" | "stickers")가 가르는 것은 검색 대상과 placeholder 뿐이고, 나머지 동작은 같다.
+export function buildGiphyPicker({ kind, onPick }) {
   let visible = false;
   let abortCtl = null;
   let debounceTimer = null;
@@ -29,23 +30,23 @@ export function buildGifPicker(onPick) {
   // loadMore 인플라이트 가드(뷰 레벨). 빠른 스크롤로 loadMore 가 연달아 불려도 진행 중인 1건이
   // 상태줄("loading more…") 표시/해제를 독점하게 해, skipped 호출이 도중에 지워버리는 깜빡임을 없앤다.
   let moreLoading = false;
+  const api = createGiphyApi(kind);
   // 페이지네이션 로직(offset/중복제거/hasMore/캐시)은 순수 모듈에 위임. 여기선 렌더·스크롤·abort 만.
   const paginator = createGifPaginator({
-    fetchPage: ({ query, offset, signal }) =>
-      query ? searchGifs(query, { offset, signal }) : featuredGifs({ offset, signal }),
+    fetchPage: ({ query, offset, signal }) => api.search(query, { offset, signal }),
     pageSize: DEFAULT_LIMIT,
-    maxPages: GIF_MAX_PAGES,
+    maxPages: MAX_PAGES,
   });
 
   const searchInput = el("input", {
     class: "field room-gif-search",
     type: "text",
-    placeholder: "search gifs…",
+    placeholder: kind === "stickers" ? "search stickers…" : "search gifs…",
     spellcheck: "false",
     autocomplete: "off",
     dataset: { noDrag: "" },
   });
-  searchInput.addEventListener("keydown", () => playKey()); // 레트로 일관성: GIF 검색도 키사운드
+  searchInput.addEventListener("keydown", () => playKey()); // 레트로 일관성: Giphy 검색도 키사운드
   const gridEl = el("div", { class: "room-gif-grid", dataset: { noDrag: "" } });
   const statusEl = el("div", { class: "room-gif-status", text: "", hidden: true });
   // loadMore(다음 페이지) 전용 상태줄. 그리드 '아래'에 두어 페이지 로드 시 그리드가 흔들리지 않게
@@ -195,18 +196,18 @@ export function buildGifPicker(onPick) {
   function onGridScroll() {
     if (!visible || moreHalted) return;
     const distFromBottom = gridEl.scrollHeight - gridEl.scrollTop - gridEl.clientHeight;
-    if (distFromBottom < GIF_NEAR_BOTTOM_PX) loadMore();
+    if (distFromBottom < NEAR_BOTTOM_PX) loadMore();
   }
 
   function scheduleLoad(query) {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => load(query), GIF_SEARCH_DEBOUNCE_MS);
+    debounceTimer = setTimeout(() => load(query), SEARCH_DEBOUNCE_MS);
   }
 
   // --- 상황별 카테고리 바 (카오모지 sub-tab 과 동일 패턴) ---
   const catBtns = new Map();
   const categoriesEl = el("div", { class: "room-gif-cats", dataset: { noDrag: "" } });
-  for (const term of GIF_CATEGORIES) {
+  for (const term of CATEGORIES) {
     const btn = el("button", { class: "btn room-gif-cat", text: term, title: term, type: "button" });
     btn.addEventListener("click", () => {
       searchInput.value = term;
