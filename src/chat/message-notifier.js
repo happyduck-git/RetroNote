@@ -16,17 +16,23 @@
 // 그 목록(localStorage)이 로그인/서버 동기화 도중 잠깐 비는 순간 메시지를 통째로 버리는 버그가 있어 제거했다.
 //
 // DI factory 로 협력자를 주입받아 테스트 가능하게 한다. 기본 export 는 실제 모듈로 배선한 인스턴스.
-import { getClient } from "../auth/auth.js";
+import { getClient, ensureFreshSession } from "../auth/auth.js";
 import { setUnread, isAppFocused } from "../platform/badge.js";
+import { subscribeChannel } from "./channel-subscribe.js";
 
 export function makeMessageNotifier({
   getClient,
   isAppFocused,
   setUnread,
+  ensureFreshSession = async () => {},
 }) {
   let channel = null;
   let client = null;
   let starting = false;
+  let currentUserId = null;
+  let gen = 0; // stop/start 뒤에 끝난 옛 구독이 살아남지 못하게 하는 세대 번호
+  let status = "connecting";
+  const statusSubs = new Set(); // 연결 상태 구독자(로비 표시 + 재연결 감독자)
   const unreadByRoom = new Map(); // code -> 안 읽은 수
   const subs = new Set(); // 로비 등 구독자(방별 카운터 변경 시 재렌더)
 
@@ -125,26 +131,90 @@ export function makeMessageNotifier({
     return () => petUnreadSubs.delete(cb);
   }
 
+  function setStatus(next) {
+    if (status === next) return;
+    status = next;
+    for (const fn of statusSubs) {
+      try { fn(status); } catch (e) { console.error("notifier status subscriber failed:", e); }
+    }
+  }
+
+  // 연결 상태 구독. unsubscribe 를 돌려준다.
+  function onStatus(cb) {
+    statusSubs.add(cb);
+    return () => statusSubs.delete(cb);
+  }
+
+  function getStatus() {
+    return status;
+  }
+
+  // 라이브러리가 상태를 안 알려준 채 죽은 경우(좀비)를 가려낸다.
+  function isHealthy() {
+    return !!channel && channel.state === "joined";
+  }
+
+  // 채널만 연다. 실패는 호출 측으로 전달 — reconnect 가 재시도 판단에 쓴다.
+  // userId 는 인자로 받아 핸들러 클로저에 담는다 — 모듈 변수를 읽으면 정리 도중 null 이 섞인다.
+  async function openChannel(userId, myGen) {
+    const c = await getClient();
+    if (myGen !== gen) return;
+    client = c;
+    const ch = c
+      .channel("notify:messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => handleInsert(userId, payload.new),
+      );
+    channel = ch;
+    await subscribeChannel(ch, (s) => {
+      if (myGen === gen) setStatus(s);
+    });
+    // 구독이 끝나기 전에 세대가 바뀌었다면 이 채널은 주인이 없다 — 스스로 치운다.
+    if (myGen !== gen) {
+      if (channel === ch) channel = null;
+      try {
+        await c.removeChannel(ch);
+      } catch (e) {
+        console.error("notifier removeChannel failed:", e);
+      }
+    }
+  }
+
   async function start(userId) {
     // 이미 떠 있으면(또는 사용자 전환으로 재호출) 먼저 깨끗이 정리 → 이중 채널 방지.
     await stop();
-    if (starting) return;
+    const myGen = gen;
     starting = true;
+    currentUserId = userId;
     try {
-      client = await getClient();
-      channel = client
-        .channel("notify:messages")
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "messages" },
-          (payload) => handleInsert(userId, payload.new),
-        );
-      await channel.subscribe();
+      await openChannel(userId, myGen);
     } catch (e) {
       console.error("message notifier start failed:", e);
-      await stop();
+      await teardownChannel();
+      // 실패를 알려야 감독자가 재시도 일정을 잡는다. 조용히 끝내면 영영 connecting 에 머문다.
+      if (myGen === gen) setStatus("error");
     } finally {
-      starting = false;
+      if (myGen === gen) starting = false;
+    }
+  }
+
+  // 채널만 갈아 끼운다 — 안 읽음 카운터는 건드리지 않는다(재연결이 배지를 지우면 안 된다).
+  // start 와 겹치면 실패로 알린다 — 조용히 통과시키면 감독자가 "붙었다"고 잘못 판단한다.
+  async function reconnect() {
+    if (!currentUserId) throw new Error("not started");
+    if (starting) throw new Error("busy");
+    const myGen = gen;
+    const userId = currentUserId;
+    starting = true;
+    try {
+      await teardownChannel();
+      await ensureFreshSession();
+      if (myGen !== gen) throw new Error("superseded");
+      await openChannel(userId, myGen);
+    } finally {
+      if (myGen === gen) starting = false;
     }
   }
 
@@ -165,7 +235,8 @@ export function makeMessageNotifier({
     }
   }
 
-  async function stop() {
+  // 채널만 정리. 카운터는 그대로 둔다.
+  async function teardownChannel() {
     try {
       if (channel && client) await client.removeChannel(channel);
     } catch (e) {
@@ -173,6 +244,14 @@ export function makeMessageNotifier({
     } finally {
       channel = null;
     }
+  }
+
+  async function stop() {
+    gen++; // 진행 중인 start/reconnect 를 무효화한다 — 늦게 끝나도 채널을 남기지 못한다.
+    starting = false;
+    await teardownChannel();
+    currentUserId = null;
+    setStatus("connecting");
     clearAll();
   }
 
@@ -193,6 +272,11 @@ export function makeMessageNotifier({
     clearRoom,
     getUnreadByRoom,
     subscribe,
+    // 연결 복구
+    reconnect,
+    isHealthy,
+    onStatus,
+    getStatus,
     // 펫 전용
     setActiveRoom,
     onMessageArrived,
@@ -201,10 +285,11 @@ export function makeMessageNotifier({
   };
 }
 
-// 실제 wiring: main.js 가 로그인/로그아웃 시 start/stop, room-view 가 입장 시 clearRoom,
-// lobby-view 가 getUnreadByRoom/subscribe 를 호출한다.
+// 실제 wiring: main.js 가 로그인/로그아웃 시 start/stop(notifier-connection 경유),
+// room-view 가 입장 시 clearRoom, lobby-view 가 getUnreadByRoom/subscribe 를 호출한다.
 export const messageNotifier = makeMessageNotifier({
   getClient,
   isAppFocused,
   setUnread,
+  ensureFreshSession,
 });

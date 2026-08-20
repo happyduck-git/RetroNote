@@ -5,6 +5,8 @@ import { playKey } from "../platform/sound.js";
 import { generate6, isValid, normalize, CODE_LENGTH } from "../chat/room-code.js";
 import { getSavedRooms, setRoomAlias, removeSavedRoom, canAddRoom, MAX_SAVED_ROOMS, getRoomNickname, syncRoomsFromServer } from "../chat/session.js";
 import { messageNotifier } from "../chat/message-notifier.js";
+import { notifierConnection } from "../chat/notifier-connection.js";
+import { connStatusLabel, renderConnStatus } from "./conn-status.js";
 
 // 방에 들어가기 직전 닉네임 게이트: 방별 닉네임이 없으면 nickname 뷰로, 있으면 바로 room으로.
 function enterRoom(ctx, code) {
@@ -63,10 +65,25 @@ export const lobbyView = {
     });
     onEnter(input, join);
 
+    // 배지·알림용 전역 채널 상태. 정상일 땐 숨기고, 끊겼을 때만 한 줄 띄운다(클릭하면 즉시 재시도).
+    const connEl = el("button", {
+      class: "btn lobby-conn",
+      hidden: true,
+      onClick: () => notifierConnection.retryNow(),
+    });
+    // 첫 연결 중에도 숨긴다 — connecting 은 감독자의 20초 상한에 걸려 반드시 recovering/waiting 으로
+    // 넘어가므로(아무 상태도 삼켜지지 않는다), 그때부터 띄우면 이 줄이 뜨는 게 곧 문제라는 신호가 된다.
+    function renderConn(s) {
+      const quiet = s.state === "connected" || s.state === "connecting";
+      connEl.hidden = quiet;
+      if (!quiet) renderConnStatus(connEl, connStatusLabel(s));
+    }
+    renderConn(notifierConnection.getState());
+
     const savedSection = el("div", { class: "saved-rooms" });
     renderSavedRooms(savedSection, ctx);
 
-    screenEl.append(el("div", { class: "lobby" }, [createBtn, sep, input, joinBtn, err, savedSection]));
+    screenEl.append(el("div", { class: "lobby" }, [createBtn, sep, input, joinBtn, err, connEl, savedSection]));
 
     // 로컬 목록을 먼저 그린 뒤, 서버 멤버십에서 방을 복원한다(새 기기/재설치 대응).
     // 추가된 방이 있을 때만 재렌더. 실패는 비핵심이라 조용히 무시.
@@ -81,11 +98,16 @@ export const lobbyView = {
     this._unsub = messageNotifier.subscribe(() => {
       if (savedSection.isConnected) renderSavedRooms(savedSection, ctx);
     });
+    this._unsubConn = notifierConnection.subscribe((s) => {
+      if (connEl.isConnected) renderConn(s);
+    });
   },
 
   unmount() {
     this._unsub?.();
     this._unsub = null;
+    this._unsubConn?.();
+    this._unsubConn = null;
   },
 };
 

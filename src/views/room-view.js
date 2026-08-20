@@ -10,7 +10,10 @@ import { withDateDividers } from "../chat/date-divider.js";
 import { uploadAttachment } from "../chat/attachment.js";
 import { isGiphyConfigured } from "../chat/giphy.js";
 import { makeSlashDispatcher } from "../chat/slash-command.js";
-import { buildHeader, STATUS_TEXT } from "./room/header.js";
+import { buildHeader } from "./room/header.js";
+import { connStatusLabel, renderConnStatus } from "./conn-status.js";
+import { createReconnectController } from "../chat/reconnect-controller.js";
+import { createBackfillGate } from "../chat/backfill.js";
 import { buildNickEditor } from "./room/nick-editor.js";
 import { buildInputRow } from "./room/input-row.js";
 import { buildCommandBanner } from "./room/command-banner.js";
@@ -83,12 +86,15 @@ export const roomView = {
 
     // --- DOM 구성 ---
     screenEl.replaceChildren();
+    // 헤더가 감독자보다 먼저 만들어진다 — 클릭 시점에 읽도록 미리 잡아 둔다.
+    let controller = null;
     const nicknameEditor = buildNickEditor(
       () => getRoomNickname(code),
       (newNick) => changeRoomNickname(code, newNick),
     );
     const { headerEl, statusEl } = buildHeader(code, {
       onLeave: () => ctx.navigate("lobby"),
+      onRetry: () => controller?.retryNow(),
       nicknameEditor,
     });
     const list = el("div", { class: "room-list", dataset: { noDrag: "" } });
@@ -135,7 +141,7 @@ export const roomView = {
     });
     // 첨부([+]) 버튼은 연결 전·첨부 보류 중·업로드 중에는 비활성 — 그 사이 메뉴를 못 열게 한다.
     function syncMediaBtn() {
-      mediaBtn.disabled = connState !== "connected" || !!pendingAttachment || uploading;
+      mediaBtn.disabled = conn.state !== "connected" || !!pendingAttachment || uploading;
     }
 
     // GIF picker·첨부 메뉴는 Giphy 키가 있을 때(showGif)만 만든다.
@@ -223,16 +229,16 @@ export const roomView = {
       }
     });
 
-    // --- 상태 렌더링: 연결 상태 + 온라인 인원 ---
-    let connState = "connecting";
+    // --- 상태 렌더링: 감독자가 방송한 연결 상태 + 온라인 인원 ---
+    let conn = { state: "connecting", attempt: 0, retryInSec: 0 };
     let onlineCount = null;
     function renderStatus() {
-      statusEl.classList.toggle("room-status--error", connState === "error");
-      if (connState === "connected") {
-        statusEl.textContent = onlineCount != null ? `● ${onlineCount} online` : STATUS_TEXT.connected;
-      } else {
-        statusEl.textContent = STATUS_TEXT[connState] || connState;
-      }
+      // 끊긴 동안의 인원수는 이미 낡았다 — 버려야 재연결 직후에 옛 숫자가 잠깐 뜨지 않는다.
+      if (conn.state !== "connected") onlineCount = null;
+      renderConnStatus(statusEl, connStatusLabel({ ...conn, onlineCount }));
+      // 송신만 게이팅 — input/emoji picker 는 local 동작이라 끊긴 동안에도 작성은 허용한다.
+      sendBtn.disabled = conn.state !== "connected";
+      syncMediaBtn();
     }
 
     // --- 스크롤 앵커 + 메시지 렌더링 ---
@@ -319,25 +325,35 @@ export const roomView = {
     // backfill 인스턴스는 openRoom 에서 미리 만들어져 entry 에 들어 있다(테스트 가능성/단일 책임).
 
     // --- transport 이벤트 wiring ---
-    // 첫 connected는 openRoom의 seed가 이미 처리했으므로 backfill 생략. 이후 재진입(재연결)에서만 호출.
-    let hadConnectedOnce = false;
-    const unsubStatus = transport.on("status", ({ state }) => {
-      connState = state;
-      const ok = state === "connected";
-      // 송신만 게이팅 — input/emoji picker 는 local 동작이므로 disconnect 중에도
-      // 메시지 작성/카오모지 삽입을 허용해 재연결 대기 시간을 가릴 수 있게 한다.
-      // 첨부([+])는 외부 호출(업로드/Giphy)이라 연결 상태와 함께 토글한다.
-      sendBtn.disabled = !ok;
-      syncMediaBtn();
-      renderStatus();
-      if (ok) {
-        if (hadConnectedOnce) backfill();
-        hadConnectedOnce = true;
-      }
+    const gate = createBackfillGate();
+    let backfillFails = 0;
+    controller = createReconnectController({
+      reconnect: () => transport.reconnect(),
+      isHealthy: () => transport.isHealthy(),
+      onState: (s) => {
+        conn = s;
+        renderStatus();
+      },
     });
-    // realtime 채널이 자신의 죽음을 모르는 경우 보강: 탭/창이 다시 보이게 되면 즉시 갭필.
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") backfill();
+    const unsubStatus = transport.on("status", ({ state }) => {
+      controller.feedTransportState(state);
+      if (gate.onStatus(state)) backfill();
+    });
+    // realtime 채널이 자신의 죽음을 모르는 경우 보강: 창이 다시 보이면 갭필하고,
+    // 그 갭필이 연달아 실패하면 연결이 실제로 죽은 것으로 보고 감독자에게 재연결을 맡긴다.
+    // 한 번은 넘긴다 — DB 쪽 일시적 오류만으로 멀쩡한 채널을 뜯지 않기 위해.
+    const onVisibility = async () => {
+      if (document.visibilityState !== "visible") return;
+      const ok = await backfill();
+      if (mountToken !== myToken) return;
+      if (ok) {
+        backfillFails = 0;
+        return;
+      }
+      if (++backfillFails >= 2) {
+        backfillFails = 0;
+        controller.forceRetry();
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
     // 이 방을 보는 중 앱이 다시 포커스되면(다른 앱 갔다 옴) 그 사이 쌓인 이 방의 안 읽은 표시를 지운다.
@@ -447,16 +463,19 @@ export const roomView = {
       }
     });
 
+    // 감독자는 connect 바로 앞에서 켠다 — 더 일찍 켜면 connect 가 방 정보를 기억하기 전에
+    // 포커스 신호가 들어와 헛시도가 한 번 난다(connect 는 첫 await 전에 그 정보를 채운다).
+    controller.start();
     transport
       .connect(code, { nickname, clientId })
       .then(() => setTimeout(() => input.focus(), 0))
       .catch((e) => {
         console.error("connect failed:", e);
         // status 구독이 "CHANNEL_ERROR" 등을 받지 못한 경로(예: connect 자체가 reject)
-        // 에서도 동일한 에러 상태로 수렴하도록 명시적으로 갱신.
-        connState = "error";
-        sendBtn.disabled = true;
-        renderStatus();
+        // 에서도 감독자가 재시도를 잡도록 명시적으로 먹인다. 단 이미 한 번 붙은 뒤라면
+        // 이건 버려진 옛 시도의 뒤늦은 실패라, 멀쩡한 연결을 끊지 않도록 무시한다.
+        gate.markFailed();
+        if (!gate.hasConnected()) controller.feedTransportState("error");
       });
 
     this._cleanup = () => {
@@ -466,6 +485,7 @@ export const roomView = {
       if (gifPicker) gifPicker.cleanup();
       lightbox.cleanup();
       unsubStore();
+      controller.stop();
       unsubStatus();
       unsubPres();
       list.removeEventListener("scroll", captureAnchor);

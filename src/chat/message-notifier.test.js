@@ -13,17 +13,20 @@ function spy(impl) {
   return fn;
 }
 
-// Supabase client 모사: channel().on(...).subscribe() 흐름에서 postgres_changes 핸들러를 붙잡아
-// 테스트가 직접 INSERT 이벤트를 흘려보낼 수 있게 한다.
+// Supabase client 모사: channel().on(...).subscribe(cb) 흐름에서 postgres_changes 핸들러를 붙잡아
+// 테스트가 직접 INSERT 이벤트를 흘려보낼 수 있게 한다. subscribe 콜백으로 연결 상태도 흘린다.
 function makeFakeClient() {
-  const state = { handler: null, removed: 0 };
+  const state = { handler: null, removed: 0, opened: 0, status: "SUBSCRIBED" };
   const channel = {
+    state: "joined",
     on(_event, _opts, cb) {
       state.handler = cb;
       return channel;
     },
-    async subscribe() {
-      return "SUBSCRIBED";
+    subscribe(cb) {
+      state.opened++;
+      cb?.(state.status);
+      return channel;
     },
   };
   return {
@@ -206,5 +209,57 @@ describe("message-notifier 펫 전용 신호(focus 무관)", () => {
     assert.equal(notifier.getPetUnreadTotal(), 1);
     await notifier.stop();
     assert.equal(notifier.getPetUnreadTotal(), 0);
+  });
+});
+
+describe("message-notifier 연결 복구", () => {
+  test("reconnect 는 채널만 새로 붙이고 안 읽음 카운터는 유지한다", async () => {
+    const { notifier, fc, lastBadge } = buildNotifier();
+    await notifier.start("me-uid");
+    fc.state.handler({ new: incomingRow() });
+    assert.equal(lastBadge(), 1);
+
+    await notifier.reconnect();
+    assert.equal(fc.state.opened, 2); // 새 채널로 다시 구독
+    assert.equal(lastBadge(), 1); // 배지는 그대로
+  });
+
+  test("reconnect 뒤에도 내 uid 기준 필터가 유지된다", async () => {
+    const { notifier, fc, lastBadge } = buildNotifier();
+    await notifier.start("me-uid");
+    await notifier.reconnect();
+    fc.state.handler({ new: incomingRow({ sender_uid: "me-uid" }) }); // 내 메시지 → 무시
+    assert.equal(notifier.getUnreadByRoom().size, 0);
+    fc.state.handler({ new: incomingRow() });
+    assert.equal(lastBadge(), 1);
+  });
+
+  test("구독 실패는 reconnect 의 reject 로 전달된다", async () => {
+    const origErr = console.error;
+    console.error = () => {};
+    try {
+      const { notifier, fc } = buildNotifier();
+      await notifier.start("me-uid");
+      fc.state.status = "CHANNEL_ERROR";
+      await assert.rejects(notifier.reconnect());
+    } finally {
+      console.error = origErr;
+    }
+  });
+
+  test("상태 구독자에게 연결 상태가 전달된다", async () => {
+    const { notifier } = buildNotifier();
+    const seen = [];
+    notifier.onStatus((s) => seen.push(s));
+    await notifier.start("me-uid");
+    assert.deepEqual(seen, ["connected"]);
+  });
+
+  test("stop 은 카운터까지 정리한다", async () => {
+    const { notifier, fc, lastBadge } = buildNotifier();
+    await notifier.start("me-uid");
+    fc.state.handler({ new: incomingRow() });
+    await notifier.stop();
+    assert.equal(lastBadge(), 0);
   });
 });

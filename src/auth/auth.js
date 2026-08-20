@@ -7,7 +7,7 @@ let clientPromise = null;
 
 export async function getClient() {
   if (!clientPromise) {
-    clientPromise = (async () => {
+    const p = (async () => {
       const { createClient } = await import("../vendor/supabase.js");
       return createClient(SUPABASE.url, SUPABASE.anonKey, {
         auth: {
@@ -17,6 +17,12 @@ export async function getClient() {
         },
       });
     })();
+    // 실패한 약속을 캐시에 남기면 재연결 루프가 30초마다 같은 실패를 영원히 반복한다.
+    // 여기서 한 번 받아 두면 unhandled rejection 도 안 뜨고, 호출 측은 p 를 그대로 받아 실패를 본다.
+    p.catch(() => {
+      if (clientPromise === p) clientPromise = null;
+    });
+    clientPromise = p;
   }
   return clientPromise;
 }
@@ -46,6 +52,17 @@ export async function getSession() {
   const { data, error } = await client.auth.getSession();
   if (error) throw error;
   return data?.session || null;
+}
+
+// 재연결 직전에 토큰을 한 번 확인한다 — 만료된 토큰으로 붙으면 채널이 거절당한다.
+// getSession 은 만료된 세션이면 내부에서 갱신을 돌린다. 실패는 흡수: 그래도 붙어 보고,
+// 안 되면 재시도 루프가 다시 온다.
+export async function ensureFreshSession() {
+  try {
+    await getSession();
+  } catch (e) {
+    console.error("session refresh failed:", e);
+  }
 }
 
 // 현재 로그인 사용자의 auth.uid. 로그인 안 된 상태면 null.
