@@ -1,5 +1,5 @@
 // Giphy picker. 검색 입력 + 결과 그리드 + 하단 attribution.
-import { el } from "../../core/dom.js";
+import { el, onEnter } from "../../core/dom.js";
 import { playKey } from "../../platform/sound.js";
 import { createGiphyApi, DEFAULT_LIMIT } from "../../chat/giphy.js";
 import { createGifPaginator, shouldHaltLoadMore } from "../../chat/gif-paginator.js";
@@ -10,10 +10,19 @@ const SEARCH_DEBOUNCE_MS = 600;
 // 상황별 카테고리 — 라벨이 곧 Giphy 검색어(영어). 미리 정한 쿼리라 호출이 예측 가능하고 캐싱이 잘 먹는다.
 const CATEGORIES = ["lol", "love", "yes", "no", "sad", "party", "hello", "wow", "clap", "cool"];
 
-// 무한 스크롤 바닥 근접 판정(px). room-view 의 near-top/near-bottom 과 같은 house style.
-const NEAR_BOTTOM_PX = 48;
-// 검색어당 페이지 상한 — Giphy 공유 한도(시간당 100회) 보호. 5페이지 = offset 0/24/48/72/96 = 최대 120개.
+// 그리드의 무한 스크롤 바닥 근접 판정(px). 메시지 리스트 쪽 NEAR_BOTTOM_PX(40)와는 별개 값이다.
+const GRID_NEAR_BOTTOM_PX = 48;
+// 검색어당 페이지 상한. 5페이지 = offset 0/24/48/72/96 = 최대 120개.
+// picker 인스턴스마다 적용되므로 GIF·스티커를 합치면 검색어당 최대 10페이지다.
+// 앱 전체가 나눠 쓰는 시간당 한도는 giphy.js 의 429 쿨다운이 막는다.
 const MAX_PAGES = 5;
+
+// 재시도가 무의미한 오류의 안내 문구. 그 외(네트워크 등)에는 null 이라 호출 측이 "다시 시도" 문구를 쓴다.
+function haltMessage(err) {
+  if (err?.name === "GiphyRateLimitError") return "검색 한도 초과 — 잠시 후 다시 시도";
+  if (err?.name === "GiphyUnavailableError") return "지금은 사용할 수 없음";
+  return null;
+}
 
 // Giphy picker. 검색 입력 + 결과 그리드 + 하단 attribution.
 // 이모지 picker 와 동일한 popup 패턴(absolute, input-row 위쪽). 셀 클릭 → onPick(gif) → picker 닫힘.
@@ -47,6 +56,13 @@ export function buildGiphyPicker({ kind, onPick }) {
     dataset: { noDrag: "" },
   });
   searchInput.addEventListener("keydown", () => playKey()); // 레트로 일관성: Giphy 검색도 키사운드
+  // 1글자 검색어는 자동 검색을 보류하지만(한도 절약) Enter 로는 강제할 수 있어야 한다. 이 통로가
+  // 없으면 lastQuery 가 이미 갱신돼 있어 지웠다 다시 쳐도 영영 검색되지 않는다.
+  // halt 된 뒤 같은 검색어로 재시도하는 길도 여기뿐이다(load 가 moreHalted 를 푼다).
+  onEnter(searchInput, () => {
+    clearTimeout(debounceTimer);
+    load(searchInput.value.trim());
+  });
   const gridEl = el("div", { class: "room-gif-grid", dataset: { noDrag: "" } });
   const statusEl = el("div", { class: "room-gif-status", text: "", hidden: true });
   // loadMore(다음 페이지) 전용 상태줄. 그리드 '아래'에 두어 페이지 로드 시 그리드가 흔들리지 않게
@@ -146,9 +162,10 @@ export function buildGiphyPicker({ kind, onPick }) {
       // 오류로 끝난 쿼리는 캐시되지 않는다. lastQuery 도 비워, 같은 검색어를 다시 입력만 해도
       // (input 핸들러의 q === lastQuery 가드에 막히지 않고) 재시도되게 한다.
       lastQuery = null;
-      // 속도 제한(429): 자동 재시도하면 한도를 더 깎으므로 안내만 하고 멈춘다.
-      if (e?.name === "GiphyRateLimitError") {
-        setStatus("검색 한도 초과 — 잠시 후 다시 시도");
+      // 429·키 막힘: 자동 재시도하면 한도만 더 깎이거나 어차피 안 되므로 안내만 하고 멈춘다.
+      const halted = haltMessage(e);
+      if (halted) {
+        setStatus(halted);
         return;
       }
       console.error("giphy load failed:", e);
@@ -180,7 +197,7 @@ export function buildGiphyPicker({ kind, onPick }) {
       // 더 소진한다. 새 검색(load)에서만 풀린다.
       if (shouldHaltLoadMore(e)) {
         moreHalted = true;
-        setMoreStatus("검색 한도 초과 — 잠시 후 다시 시도");
+        setMoreStatus(haltMessage(e));
         return;
       }
       // 일시적 오류(네트워크 등): halt 하지 않는다. offset/hasMore 가 그대로라 다음 스크롤이 같은
@@ -196,7 +213,7 @@ export function buildGiphyPicker({ kind, onPick }) {
   function onGridScroll() {
     if (!visible || moreHalted) return;
     const distFromBottom = gridEl.scrollHeight - gridEl.scrollTop - gridEl.clientHeight;
-    if (distFromBottom < NEAR_BOTTOM_PX) loadMore();
+    if (distFromBottom < GRID_NEAR_BOTTOM_PX) loadMore();
   }
 
   function scheduleLoad(query) {

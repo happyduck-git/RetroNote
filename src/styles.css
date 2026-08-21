@@ -972,7 +972,9 @@ body {
   text-shadow: none;
 }
 
-/* ===== GIF picker 팝업 (emoji popup 과 동일한 absolute 배치) ===== */
+/* ===== Giphy picker 팝업 (GIF·스티커 공용, emoji popup 과 동일한 absolute 배치) =====
+   클래스명은 room-gif-* 를 유지한다. 스티커도 결국 GIF 파일이라 새 이름이 더 정확하지도 않고,
+   이름만 바꾸면 동작 변화 없이 diff 만 커진다. */
 .room-gif-popup {
   position: absolute;
   bottom: 100%;

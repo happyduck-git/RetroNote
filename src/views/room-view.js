@@ -146,7 +146,6 @@ export const roomView = {
 
     // Giphy picker(GIF·스티커)·첨부 메뉴는 Giphy 키가 있을 때(showGiphy)만 만든다.
     // 셀 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
-    // fallbackLabel: 제목이 비어 있는 항목의 미리보기 라벨("GIF" / "STICKER").
     function onGiphyPick(gif, fallbackLabel) {
       // 한 번에 하나만 — 이미 첨부가 있거나 업로드 중이면 무시한다(파일 첨부 경로와 동일 정책).
       // 평소엔 syncMediaBtn 가 이 상태에서 [+] 버튼을 잠그지만, 만약을 위한 방어 가드.
@@ -169,7 +168,7 @@ export const roomView = {
       input.focus();
     }
     // [img] 선택 → 파일 선택창, [gif]/[sticker] 선택 → Giphy picker. 메뉴는 항목 클릭 시 스스로 닫힌다.
-    // GIF·스티커는 같은 컴포넌트의 인스턴스 둘. 페이지네이터 캐시가 인스턴스별이라 결과가 섞이지 않는다.
+    // 페이지네이터 캐시가 인스턴스별이라 GIF 결과와 스티커 결과가 섞이지 않는다.
     const gifPicker = showGiphy
       ? buildGiphyPicker({ kind: "gifs", onPick: (gif) => onGiphyPick(gif, "GIF") })
       : null;
@@ -207,6 +206,11 @@ export const roomView = {
     mediaBtn.addEventListener("click", () => {
       if (mediaBtn.disabled) return;
       if (pendingAttachment) return; // 한 번에 하나만 — 기존 첨부 제거 후 다시 클릭해야 한다.
+      // 열려 있던 picker 를 직접 닫는다. 마우스로 누르면 picker 의 바깥클릭(mousedown) 핸들러가
+      // 알아서 닫아 주지만, 키보드(Enter/Space)로 누르면 mousedown 이 없어 그 경로를 건너뛴다.
+      // 그대로 두면 같은 자리에 팝업이 겹쳐 뜬다. (emojiBtn 이 commandSuggest 를 닫는 것과 같은 취지)
+      gifPicker?.hide();
+      stickerPicker?.hide();
       if (attachMenu) attachMenu.toggle();
       else fileInput.click();
     });
@@ -420,6 +424,10 @@ export const roomView = {
           pendingAttachment = prevAttachment;
           pendingAttachmentLabel = prevLabel;
           attachPreview.show({ filename: prevLabel || "attachment", status: "ready", bytes: prevAttachment.bytes });
+          // 전송 중에 열어 둔 picker 가 있으면 닫는다. 첨부가 되돌아와 자리가 찼으므로 이제 셀을 눌러도
+          // onGiphyPick 가드에 걸려 조용히 무시된다(클릭이 씹힌 것처럼 보인다).
+          gifPicker?.hide();
+          stickerPicker?.hide();
           syncMediaBtn();
         }
       }
