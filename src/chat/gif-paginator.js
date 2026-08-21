@@ -6,7 +6,9 @@
 // 검색어를 오갔다 돌아와도 로드된 페이지와 스크롤 재개 지점을 그대로 복원한다.
 // Giphy beta 키의 시간당 100회(앱 전체 공유) 한도 때문에 maxPages 로 검색어당 호출 수를 상한한다.
 //
-// fetchPage({ query, offset, signal }) -> Promise<gif[]>  (picker 가 실제 giphy 호출을 주입)
+// fetchPage({ query, offset, signal }) -> Promise<{ items, rawCount }>  (picker 가 실제 giphy 호출을 주입)
+// rawCount 는 걸러내기 전 개수다. items 로 hasMore 를 판정하면 정규화에서 한 건만 빠져도
+// "풀 페이지가 아님"으로 읽혀 아직 남았는데도 스크롤이 끝나 버린다.
 export function createGifPaginator({ fetchPage, pageSize = 24, maxPages = 5 }) {
   let query = null;     // 현재 쿼리("" = 트렌딩). fetchPage 에 그대로 넘긴다.
   let offset = 0;
@@ -72,12 +74,12 @@ export function createGifPaginator({ fetchPage, pageSize = 24, maxPages = 5 }) {
     const s = seq;
     loading = true;
     try {
-      const page = await fetchPage({ query, offset: 0, signal });
+      const { items: page, rawCount } = await fetchPage({ query, offset: 0, signal });
       if (s !== seq || signal.aborted) return { stale: true };
       items = dedup(page); // seen 이 비어 전부 신규
       offset = pageSize;
       pages = 1;
-      hasMore = page.length >= pageSize && pages < maxPages;
+      hasMore = rawCount >= pageSize && pages < maxPages;
       writeCache();
       return { items, hasMore };
     } finally {
@@ -91,16 +93,16 @@ export function createGifPaginator({ fetchPage, pageSize = 24, maxPages = 5 }) {
     const s = seq;
     loading = true;
     try {
-      const page = await fetchPage({ query, offset, signal });
+      const { items: page, rawCount } = await fetchPage({ query, offset, signal });
       if (s !== seq || signal.aborted) return { stale: true };
       const newItems = dedup(page);
-      // offset 은 요청한 pageSize 만큼 전진(정규화로 걸러진 개수가 아님) — Giphy 원본 인덱싱 정렬 유지.
+      // offset 도 rawCount 와 같은 기준(요청한 pageSize)으로 전진한다. Giphy 원본 인덱싱 정렬 유지.
       offset += pageSize;
       pages++;
       items.push(...newItems);
       // 풀 페이지 + 실제 신규분이 있고 + 상한 미만일 때만 계속. 전부 중복이면 멈춰 스핀 루프 방지
       // (history-loader.js 의 newlyAdded>0 가드와 동일 취지).
-      hasMore = page.length >= pageSize && newItems.length > 0 && pages < maxPages;
+      hasMore = rawCount >= pageSize && newItems.length > 0 && pages < maxPages;
       writeCache();
       return { newItems, hasMore };
     } finally {
@@ -112,9 +114,9 @@ export function createGifPaginator({ fetchPage, pageSize = 24, maxPages = 5 }) {
 }
 
 // loadMore 실패를 이 쿼리 세션 동안 완전히 중단(halt)해야 하는지 판정하는 순수 정책.
-// 429(GiphyRateLimitError, 앱 전체 공유 한도)만 halt — 재시도해도 한도만 더 깎이고 무의미하므로
-// 새 검색 전까지 멈춘다. 그 외(네트워크 등 일시적 오류)는 halt 하지 않아 다음 스크롤에서 재시도된다.
+// 재시도해도 소용없는 둘만 halt 한다: 429(공유 한도)와 401/403(키가 막힘). 새 검색 전까지 멈춘다.
+// 그 외(네트워크 등 일시적 오류)는 halt 하지 않아 다음 스크롤에서 재시도된다.
 // (AbortError 는 뷰에서 먼저 걸러져 여기까지 오지 않는다.)
 export function shouldHaltLoadMore(err) {
-  return err?.name === "GiphyRateLimitError";
+  return err?.name === "GiphyRateLimitError" || err?.name === "GiphyUnavailableError";
 }

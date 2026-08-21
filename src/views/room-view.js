@@ -19,7 +19,7 @@ import { buildInputRow } from "./room/input-row.js";
 import { buildCommandBanner } from "./room/command-banner.js";
 import { buildCommandSuggest } from "./room/command-suggest.js";
 import { buildAttachPreview, buildAttachMenu } from "./room/attach.js";
-import { buildGifPicker } from "./room/gif-picker.js";
+import { buildGiphyPicker } from "./room/giphy-picker.js";
 import { buildLightbox } from "./room/lightbox.js";
 import { buildEmojiPicker } from "./room/emoji-picker.js";
 import { createScrollAnchor } from "./room/scroll-anchor.js";
@@ -101,8 +101,8 @@ export const roomView = {
     // 과거 로딩 인디케이터: list 의 형제(바로 위)로 둔다. list 내부에 넣으면 매 emit 의
     // replaceChildren 에 지워진다. loadingOlder 동안만 보인다.
     const historyHint = el("div", { class: "room-history-hint", hidden: true });
-    const showGif = isGiphyConfigured();
-    const { inputRowEl, emojiBtn, mediaBtn, fileInput, input, sendBtn } = buildInputRow({ showGif });
+    const showGiphy = isGiphyConfigured();
+    const { inputRowEl, emojiBtn, mediaBtn, fileInput, input, sendBtn } = buildInputRow({ showGiphy });
     const commandBanner = buildCommandBanner();
     const dispatchCommand = makeSlashDispatcher({ navigate: ctx.navigate, showBanner: commandBanner.show });
     // 목록에서 고른 명령을 실행하고 입력창을 정리한다. dispatchCommand 는 알려진 이름이면 실행한다.
@@ -122,10 +122,10 @@ export const roomView = {
       picker.toggle();
     });
 
-    // --- 첨부/GIF 상태 ---
+    // --- 첨부(이미지/GIF/스티커) 상태 ---
     // 한 번에 하나의 첨부만 허용 — 업로드 완료 후 SEND 까지 보류한다. SEND 또는 [×] 로 해제.
     let pendingAttachment = null;
-    // 미리보기에 보여 줄 첨부 라벨(파일명 또는 GIF 제목). 전송 실패 시 첨부 미리보기 복원에 쓴다.
+    // 미리보기에 보여 줄 첨부 라벨(파일명 또는 Giphy 항목 제목). 전송 실패 시 첨부 미리보기 복원에 쓴다.
     let pendingAttachmentLabel = "";
     // 업로드가 진행 중인 동안(아직 pendingAttachment 가 비어 있는 구간) [+] 버튼을 잠그는 플래그.
     // 이게 없으면 업로드 도중 고른 GIF 의 staging 이 업로드 완료 시점에 조용히 덮어써진다.
@@ -144,13 +144,14 @@ export const roomView = {
       mediaBtn.disabled = conn.state !== "connected" || !!pendingAttachment || uploading;
     }
 
-    // GIF picker·첨부 메뉴는 Giphy 키가 있을 때(showGif)만 만든다.
-    // GIF 셀 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
-    function onGifPick(gif) {
+    // Giphy picker(GIF·스티커)·첨부 메뉴는 Giphy 키가 있을 때(showGiphy)만 만든다.
+    // 셀 클릭 → 즉시 전송하지 않고 첨부로 스테이징(이미지 첨부와 동일 흐름). 텍스트와 함께 SEND 로 보낸다.
+    function onGiphyPick(gif, fallbackLabel) {
       // 한 번에 하나만 — 이미 첨부가 있거나 업로드 중이면 무시한다(파일 첨부 경로와 동일 정책).
       // 평소엔 syncMediaBtn 가 이 상태에서 [+] 버튼을 잠그지만, 만약을 위한 방어 가드.
       if (pendingAttachment || uploading) return;
-      // 외부(Giphy) GIF 는 업로드가 없어 바로 ready.
+      // 외부(Giphy) 항목은 업로드가 없어 바로 ready.
+      // 스티커도 Giphy 가 주는 GIF 파일이라 kind 는 gif_external 그대로 쓴다(DB check 제약도 그대로 통과).
       pendingAttachment = {
         url: gif.gifUrl,
         kind: "gif_external",
@@ -160,23 +161,31 @@ export const roomView = {
         bytes: gif.gifBytes,
       };
       fileInput.value = "";
-      const label = gif.title && gif.title.trim() ? gif.title.trim() : "GIF";
+      const label = gif.title && gif.title.trim() ? gif.title.trim() : fallbackLabel;
       pendingAttachmentLabel = label;
       attachPreview.show({ filename: label, status: "ready", bytes: gif.gifBytes });
       syncMediaBtn();
       input.focus();
     }
-    // [img] 선택 → 파일 선택창, [gif] 선택 → Giphy picker. 메뉴는 항목 클릭 시 스스로 닫힌다.
-    const gifPicker = showGif ? buildGifPicker(onGifPick) : null;
-    const attachMenu = showGif
+    // [img] 선택 → 파일 선택창, [gif]/[sticker] 선택 → Giphy picker. 메뉴는 항목 클릭 시 스스로 닫힌다.
+    // 페이지네이터 캐시가 인스턴스별이라 GIF 결과와 스티커 결과가 섞이지 않는다.
+    const gifPicker = showGiphy
+      ? buildGiphyPicker({ kind: "gifs", onPick: (gif) => onGiphyPick(gif, "GIF") })
+      : null;
+    const stickerPicker = showGiphy
+      ? buildGiphyPicker({ kind: "stickers", onPick: (gif) => onGiphyPick(gif, "STICKER") })
+      : null;
+    const attachMenu = showGiphy
       ? buildAttachMenu({
           onPickImage: () => {
             if (!pendingAttachment) fileInput.click();
           },
           onPickGif: () => gifPicker.show(),
+          onPickSticker: () => stickerPicker.show(),
         })
       : null;
     if (gifPicker) inputRowEl.append(gifPicker.popupEl);
+    if (stickerPicker) inputRowEl.append(stickerPicker.popupEl);
     if (attachMenu) inputRowEl.append(attachMenu.popupEl);
 
     // lightbox 는 .room 의 마지막 자식으로 → position: absolute + inset: 0 으로 자연스럽게 채움.
@@ -192,11 +201,16 @@ export const roomView = {
       lightbox.show(img.src, { kind: wrap?.dataset.kind || "" });
     });
 
-    // [+] 클릭: 첨부 메뉴([img]/[gif]) 토글. Giphy 키가 없으면(showGif=false) 메뉴 없이 곧장 파일 선택.
+    // [+] 클릭: 첨부 메뉴([img]/[gif]/[sticker]) 토글. Giphy 키가 없으면(showGiphy=false) 메뉴 없이 곧장 파일 선택.
     // 업로드 중에는 mount 가 갈아끼워질 수 있어 mountToken 가드로 늦은 setState 를 차단.
     mediaBtn.addEventListener("click", () => {
       if (mediaBtn.disabled) return;
       if (pendingAttachment) return; // 한 번에 하나만 — 기존 첨부 제거 후 다시 클릭해야 한다.
+      // 열려 있던 picker 를 직접 닫는다. 마우스로 누르면 picker 의 바깥클릭(mousedown) 핸들러가
+      // 알아서 닫아 주지만, 키보드(Enter/Space)로 누르면 mousedown 이 없어 그 경로를 건너뛴다.
+      // 그대로 두면 같은 자리에 팝업이 겹쳐 뜬다. (emojiBtn 이 commandSuggest 를 닫는 것과 같은 취지)
+      gifPicker?.hide();
+      stickerPicker?.hide();
       if (attachMenu) attachMenu.toggle();
       else fileInput.click();
     });
@@ -410,6 +424,10 @@ export const roomView = {
           pendingAttachment = prevAttachment;
           pendingAttachmentLabel = prevLabel;
           attachPreview.show({ filename: prevLabel || "attachment", status: "ready", bytes: prevAttachment.bytes });
+          // 전송 중에 열어 둔 picker 가 있으면 닫는다. 첨부가 되돌아와 자리가 찼으므로 이제 셀을 눌러도
+          // onGiphyPick 가드에 걸려 조용히 무시된다(클릭이 씹힌 것처럼 보인다).
+          gifPicker?.hide();
+          stickerPicker?.hide();
           syncMediaBtn();
         }
       }
@@ -483,6 +501,7 @@ export const roomView = {
       commandSuggest.hide(); // 자동완성 document mousedown 리스너 정리(누수 방지)
       if (attachMenu) attachMenu.cleanup();
       if (gifPicker) gifPicker.cleanup();
+      if (stickerPicker) stickerPicker.cleanup();
       lightbox.cleanup();
       unsubStore();
       controller.stop();
